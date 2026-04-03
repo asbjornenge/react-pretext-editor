@@ -14,6 +14,9 @@ interface EditorProps {
   onBlocksChange?: (blocks: Block[]) => void
   resolveImageUrl?: (url: string, filename: string) => string
   config?: LayoutConfig
+  height?: number | string
+  expandable?: boolean
+  width?: number | string
 }
 
 const DEFAULT_CONFIG = {
@@ -56,15 +59,35 @@ export default function Editor({
   onBlocksChange,
   resolveImageUrl,
   config,
+  height,
+  expandable,
+  width,
 }: EditorProps) {
   const engine = usePretextEngine()
   const stageRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const layoutPanelRef = useRef<HTMLDivElement>(null)
   const [markdownText, setMarkdownText] = useState(() => blocksToMarkdown(blocks))
 
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
   const [drawingPolygonIndex, setDrawingPolygonIndex] = useState<number | null>(null)
-  const [mode, setMode] = useState<EditorMode>('layout')
+  const [activeModes, setActiveModes] = useState<Set<EditorMode>>(new Set(['layout']))
+
+  const toggleMode = (m: EditorMode, shift: boolean) => {
+    if (shift) {
+      setActiveModes(prev => {
+        const next = new Set(prev)
+        if (next.has(m)) {
+          if (next.size > 1) next.delete(m) // don't remove last mode
+        } else {
+          next.add(m)
+        }
+        return next
+      })
+    } else {
+      setActiveModes(new Set([m]))
+    }
+  }
 
   // Drag state stored in ref for performance (avoid re-renders during drag)
   const dragRef = useRef<{
@@ -94,7 +117,7 @@ export default function Editor({
   const findAnchorAtY = useCallback((targetY: number) => {
     if (!engine || blocks.length === 0) return null
     const { prepareWithSegments, layoutNextLine } = engine
-    const containerWidth = (containerRef.current?.offsetWidth || 700) - 40
+    const containerWidth = (layoutPanelRef.current?.offsetWidth || 700) - 40
     let y = 0
     for (let bi = 0; bi < blocks.length; bi++) {
       const block = blocks[bi]
@@ -128,7 +151,7 @@ export default function Editor({
 
     const { prepareWithSegments, layoutNextLine } = engine
     const stage = stageRef.current
-    const rawWidth = containerRef.current?.offsetWidth || 700
+    const rawWidth = layoutPanelRef.current?.offsetWidth || 700
     const pad = 20
     const containerWidth = rawWidth - pad * 2
     const { bodyFont, headingFont, bodyLineHeight, headingLineHeight, blockGap, imgPadding } = cfg
@@ -296,12 +319,21 @@ export default function Editor({
     document.fonts.ready.then(() => renderPretext())
   }, [renderPretext])
 
+  // Re-render layout when the layout panel resizes (e.g. after mode toggle transition)
+  useEffect(() => {
+    const el = layoutPanelRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => renderPretext())
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [renderPretext])
+
   // Sync markdown text when entering write mode
   useEffect(() => {
-    if (mode === 'write') {
+    if (activeModes.has('write')) {
       setMarkdownText(blocksToMarkdown(blocks))
     }
-  }, [mode])
+  }, [activeModes])
 
   // Handle markdown text changes
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -345,7 +377,7 @@ export default function Editor({
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (dragRef.current) {
       const drag = dragRef.current
-      const layoutWidth = (containerRef.current?.offsetWidth || 700) - 40
+      const layoutWidth = (layoutPanelRef.current?.offsetWidth || 700) - 40
       const dx = e.clientX - drag.startX
       const dy = e.clientY - drag.startY
 
@@ -370,7 +402,7 @@ export default function Editor({
     if (resizeRef.current) {
       const r = resizeRef.current
       const dx = e.clientX - r.startX
-      const layoutWidth = (containerRef.current?.offsetWidth || 700) - 40
+      const layoutWidth = (layoutPanelRef.current?.offsetWidth || 700) - 40
       const newImages = [...layoutData.images]
       newImages[r.imageIndex] = { ...newImages[r.imageIndex], width: Math.max(50, r.origWidth + dx) }
       onLayoutChange({ ...layoutData, images: newImages, editorWidth: layoutWidth })
@@ -423,7 +455,7 @@ export default function Editor({
   }
 
   const handleToggleFloat = (index: number) => {
-    const layoutWidth = (containerRef.current?.offsetWidth || 700) - 40
+    const layoutWidth = (layoutPanelRef.current?.offsetWidth || 700) - 40
     const newImages = [...layoutData.images]
     const img = newImages[index]
     const newFloat = img.float === 'right' ? 'left' : 'right'
@@ -452,7 +484,11 @@ export default function Editor({
   ]
 
   return (
-    <div style={{ marginBottom: 20 }}>
+    <div style={{
+      marginBottom: 20,
+      width: expandable ? `calc(${typeof width === 'number' ? width + 'px' : width || '100%'} * ${activeModes.size})` : width,
+      transition: 'width 0.2s ease',
+    }}>
       {/* Toolbar */}
       <div style={{
         display: 'flex', alignItems: 'center',
@@ -461,14 +497,14 @@ export default function Editor({
         borderBottom: '2px solid #502581',
       }}>
         {modes.map(m => (
-          <button key={m.key} type="button" onClick={() => setMode(m.key)}
+          <button key={m.key} type="button" onClick={(e) => toggleMode(m.key, e.shiftKey)}
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
               padding: '6px 14px', fontSize: 13, cursor: 'pointer',
-              background: mode === m.key ? '#502581' : 'transparent',
-              color: mode === m.key ? 'white' : '#6a4c93',
+              background: activeModes.has(m.key) ? '#502581' : 'transparent',
+              color: activeModes.has(m.key) ? 'white' : '#6a4c93',
               border: 'none', borderRadius: 4,
-              fontWeight: mode === m.key ? 600 : 400,
+              fontWeight: activeModes.has(m.key) ? 600 : 400,
               transition: 'background 0.15s, color 0.15s',
             }}>
             {m.icon}
@@ -490,56 +526,52 @@ export default function Editor({
       {/* Editor container */}
       <div ref={containerRef}
         style={{
-          position: 'relative', background: 'white', border: '1px solid #ddd', borderRadius: '0 0 6px 6px',
-          borderTop: 'none', overflow: 'hidden', minHeight: 300,
-        }}
-        onMouseDown={mode === 'layout' ? handleMouseDown : undefined}
-        onClick={mode === 'layout' ? handleStageClick : undefined}
-        onMouseMove={mode === 'layout' ? handleMouseMove : undefined}
-        onMouseUp={mode === 'layout' ? handleMouseUp : undefined}
-        onMouseLeave={mode === 'layout' ? handleMouseUp : undefined}>
+          display: 'flex', background: 'white', border: '1px solid #ddd', borderRadius: '0 0 6px 6px',
+          borderTop: 'none', minHeight: height || 300, height: height, overflow: 'hidden',
+        }}>
 
-        {/* Write mode: markdown textarea */}
-        {mode === 'write' && (
-          <textarea
-            autoFocus
-            value={markdownText}
-            onChange={handleTextChange}
-            placeholder="Write your content here...&#10;&#10;Use ## for headings&#10;&#10;Separate paragraphs with blank lines"
-            style={{
-              width: '100%',
-              minHeight: 400,
-              padding: 20,
-              border: 'none',
-              outline: 'none',
-              fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-              fontSize: 14,
-              lineHeight: '1.7',
-              color: '#333',
-              resize: 'vertical',
-              caretColor: '#502581',
-              boxSizing: 'border-box',
-            }}
-          />
-        )}
-
-        {/* Layout mode: pretext rendering + images */}
-        {mode === 'layout' && (
-          <div
-            ref={stageRef}
-            style={{ position: 'relative' }}
-          />
-        )}
-
-        {/* Preview mode: read-only renderer */}
-        {mode === 'preview' && (
-          <div style={{ padding: 20 }}>
-            <Renderer blocks={blocks} layout={layoutData} config={config} resolveImageUrl={resolveImageUrl} />
+        {/* Write panel */}
+        {activeModes.has('write') && (
+          <div style={{ flex: 1, overflow: 'auto', borderRight: activeModes.size > 1 ? '1px solid #ddd' : 'none' }}>
+            <textarea
+              autoFocus
+              value={markdownText}
+              onChange={handleTextChange}
+              placeholder="Write your content here...&#10;&#10;Use ## for headings&#10;&#10;Separate paragraphs with blank lines"
+              style={{
+                width: '100%',
+                height: '100%',
+                minHeight: height || 400,
+                padding: 20,
+                border: 'none',
+                outline: 'none',
+                fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+                fontSize: 14,
+                lineHeight: '1.7',
+                color: '#333',
+                resize: 'none',
+                caretColor: '#502581',
+                boxSizing: 'border-box',
+              }}
+            />
           </div>
         )}
 
-        {/* Floating image menu */}
-        {mode === 'layout' && selectedImageIndex !== null && menuPos && selImg && (
+        {/* Layout panel */}
+        {activeModes.has('layout') && (
+          <div ref={layoutPanelRef} style={{ flex: 1, overflow: 'auto', position: 'relative', borderRight: activeModes.has('preview') ? '1px solid #ddd' : 'none' }}
+            onMouseDown={handleMouseDown}
+            onClick={handleStageClick}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}>
+            <div
+              ref={stageRef}
+              style={{ position: 'relative' }}
+            />
+
+            {/* Floating image menu */}
+            {selectedImageIndex !== null && menuPos && selImg && (
           <div style={{
             position: 'absolute', top: menuPos.top, left: menuPos.left,
             display: 'flex', gap: 2, padding: '4px 6px',
@@ -571,9 +603,13 @@ export default function Editor({
           </div>
         )}
 
-        {blocks.length === 0 && mode !== 'write' && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', pointerEvents: 'none' }}>
-            Click to start typing
+          </div>
+        )}
+
+        {/* Preview panel */}
+        {activeModes.has('preview') && (
+          <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
+            <Renderer blocks={blocks} layout={layoutData} config={config} resolveImageUrl={resolveImageUrl} />
           </div>
         )}
       </div>

@@ -13,7 +13,7 @@ export const exampleBlocks: Block[] = [
   { type: 'paragraph', tag: 'p', text: 'Følg med for mer innhold. Vi gleder oss til å dele vår kaffelidenskap med deg!' },
 ]
 
-const CMS_URL = 'https://bollefro-cms.coder.surflabs.no'
+const CMS_URL = ''
 
 export const exampleLayout: LayoutData = {
   editorWidth: 700,
@@ -22,7 +22,7 @@ export const exampleLayout: LayoutData = {
       mediaId: 4,
       filename: 'chemex-kaffe.jpeg',
       alt: 'Chemex kaffe',
-      url: `${CMS_URL}/api/media/file/chemex-kaffe.jpeg`,
+      url: `/images/chemex-kaffe.jpeg`,
       aspectRatio: 1.58,
       anchorBlockIndex: 5,
       anchorWordIndex: 22,
@@ -35,7 +35,7 @@ export const exampleLayout: LayoutData = {
       mediaId: 3,
       filename: 'chemex-brygging.jpeg',
       alt: 'Chemex brygging',
-      url: `${CMS_URL}/api/media/file/chemex-brygging.jpeg`,
+      url: `/images/chemex-brygging.jpeg`,
       aspectRatio: 1.013,
       anchorBlockIndex: 2,
       anchorWordIndex: 1,
@@ -58,7 +58,7 @@ export const exampleLayout: LayoutData = {
       mediaId: 5,
       filename: 'javaccino.jpeg',
       alt: 'Javaccino kaffe illustrasjon',
-      url: `${CMS_URL}/api/media/file/javaccino.jpeg`,
+      url: `/images/javaccino.jpeg`,
       aspectRatio: 0.713,
       anchorBlockIndex: 8,
       anchorWordIndex: 39,
@@ -74,7 +74,7 @@ export const exampleMedia: MediaItem[] = [
   {
     id: 3,
     filename: 'chemex-brygging.jpeg',
-    url: `${CMS_URL}/api/media/file/chemex-brygging.jpeg`,
+    url: `/images/chemex-brygging.jpeg`,
     alt: 'Chemex brygging',
     width: 543,
     height: 550,
@@ -82,7 +82,7 @@ export const exampleMedia: MediaItem[] = [
   {
     id: 4,
     filename: 'chemex-kaffe.jpeg',
-    url: `${CMS_URL}/api/media/file/chemex-kaffe.jpeg`,
+    url: `/images/chemex-kaffe.jpeg`,
     alt: 'Chemex kaffe',
     width: 734,
     height: 1160,
@@ -90,7 +90,7 @@ export const exampleMedia: MediaItem[] = [
   {
     id: 5,
     filename: 'javaccino.jpeg',
-    url: `${CMS_URL}/api/media/file/javaccino.jpeg`,
+    url: `/images/javaccino.jpeg`,
     alt: 'Javaccino kaffe illustrasjon',
     width: 564,
     height: 402,
