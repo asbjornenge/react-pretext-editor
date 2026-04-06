@@ -137,22 +137,32 @@ export function getSlots(
   return slots.filter(s => (s.right - s.left) > 30)
 }
 
-export function prepareImageData(images: LayoutImage[], scale: number): ImageData[] {
-  return images.map((img, i) => ({
-    index: i,
-    x: img.x * scale,
-    width: img.width * scale,
-    aspectRatio: img.aspectRatio,
-    anchorBlockIndex: img.anchorBlockIndex,
-    anchorWordIndex: img.anchorWordIndex,
-    anchorWord: img.anchorWord,
-    polygon: img.polygon,
-    resolvedY: null,
-    url: img.url,
-    alt: img.alt,
-    filename: img.filename,
-    float: img.float,
-  }))
+export function prepareImageData(images: LayoutImage[], scale: number, containerWidth?: number): ImageData[] {
+  // Use sqrt scaling for image width — images shrink slower than text
+  const imgScale = scale < 1 ? Math.sqrt(scale) : scale
+  return images.map((img, i) => {
+    const scaledWidth = img.width * imgScale
+    let scaledX = img.x * scale
+    // Ensure image doesn't overflow container
+    if (containerWidth && scaledX + scaledWidth > containerWidth) {
+      scaledX = Math.max(0, containerWidth - scaledWidth)
+    }
+    return {
+      index: i,
+      x: scaledX,
+      width: scaledWidth,
+      aspectRatio: img.aspectRatio,
+      anchorBlockIndex: img.anchorBlockIndex,
+      anchorWordIndex: img.anchorWordIndex,
+      anchorWord: img.anchorWord,
+      polygon: img.polygon,
+      resolvedY: null,
+      url: img.url,
+      alt: img.alt,
+      filename: img.filename,
+      float: img.float,
+    }
+  })
 }
 
 interface PretextEngine {

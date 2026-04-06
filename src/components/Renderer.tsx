@@ -36,7 +36,7 @@ export default function Renderer({
     const containerWidth = containerRef.current.offsetWidth
     const editorWidth = layout.editorWidth || 700
     const scale = containerWidth / editorWidth
-    const imgData = prepareImageData(layout.images || [], scale)
+    const imgData = prepareImageData(layout.images || [], scale, containerWidth)
 
     const cfg = { dropCap: false, ...config }
 
