@@ -105,6 +105,16 @@ export default function Editor({
     origWidth: number
   } | null>(null)
 
+  const polyDragRef = useRef<{
+    imageIndex: number
+    pointIndex: number
+    imgRect: DOMRect
+    startX: number
+    startY: number
+    active: boolean
+  } | null>(null)
+  const polyDragUsedRef = useRef(false)
+
   const cfg = { ...DEFAULT_CONFIG, ...config }
   const layoutData: LayoutData = layout || { images: [] }
 
@@ -254,18 +264,16 @@ export default function Editor({
       imgEl.src = resolveUrl(img.url, img.filename)
       imgEl.alt = img.alt
       imgEl.dataset.imageIndex = String(i)
-      const clipPath = img.polygon && img.polygon.length >= 3
-        ? `clip-path:polygon(${img.polygon.map((p: PolygonPoint) => `${p.x * 100}% ${p.y * 100}%`).join(', ')});`
-        : ''
-      imgEl.style.cssText = `position:absolute;left:${img.x + pad}px;top:${img.resolvedY + pad}px;width:${img.width}px;border:2px solid ${selectedImageIndex === i ? '#502581' : 'transparent'};border-radius:4px;cursor:grab;${clipPath}`
+      const imgCursor = drawingPolygonIndex === i ? 'crosshair' : 'grab'
+      imgEl.style.cssText = `position:absolute;left:${img.x + pad}px;top:${img.resolvedY + pad}px;width:${img.width}px;border:2px solid ${selectedImageIndex === i ? '#502581' : 'transparent'};border-radius:4px;cursor:${imgCursor};`
 
       // Resize handle
       const handle = document.createElement('div')
       handle.dataset.resizeHandle = String(i)
-      handle.style.cssText = `position:absolute;width:16px;height:16px;background:#502581;cursor:nwse-resize;border-radius:2px;opacity:0.7;display:none;`
+      handle.style.cssText = `position:absolute;width:8px;height:8px;background:#502581;cursor:nwse-resize;border-radius:1px;opacity:0.7;display:none;`
       const posHandle = () => {
-        handle.style.left = `${img.x + img.width - 8 + pad}px`
-        handle.style.top = `${img.resolvedY! + imgEl.offsetHeight - 8 + pad}px`
+        handle.style.left = `${img.x + img.width - 4 + pad}px`
+        handle.style.top = `${img.resolvedY! + imgEl.offsetHeight - 4 + pad}px`
         handle.style.display = 'block'
       }
       imgEl.onload = posHandle
@@ -280,7 +288,7 @@ export default function Editor({
       label.textContent = `⚓ "${img.anchorWord || '?'}"`
       stage.appendChild(label)
 
-      // Polygon SVG overlay
+      // Polygon SVG overlay — always show if polygon exists
       const poly = img.polygon || []
       const drawing = drawingPolygonIndex === i
       if (poly.length > 0 || drawing) {
@@ -290,19 +298,23 @@ export default function Editor({
           svg.style.cssText = `position:absolute;left:${img.x + pad}px;top:${img.resolvedY! + pad}px;width:${img.width}px;height:${h}px;pointer-events:none;`
           svg.setAttribute('viewBox', '0 0 1 1')
           svg.setAttribute('preserveAspectRatio', 'none')
+          // Draw polygon path
           if (poly.length >= 2) {
-            const d = poly.map((p: PolygonPoint, j: number) => `${j === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + (poly.length >= 3 && !drawing ? ' Z' : '')
+            const d = poly.map((p: PolygonPoint, j: number) => `${j === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + (poly.length >= 3 ? ' Z' : '')
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
             path.setAttribute('d', d)
-            path.setAttribute('fill', drawing ? 'rgba(80,37,129,0.1)' : 'rgba(80,37,129,0.15)')
+            path.setAttribute('fill', 'rgba(80,37,129,0.1)')
             path.setAttribute('stroke', '#502581')
-            path.setAttribute('stroke-width', '0.01')
+            path.setAttribute('stroke-width', '0.008')
+            path.setAttribute('stroke-dasharray', '0.02 0.015')
             svg.appendChild(path)
           }
-          poly.forEach((p: PolygonPoint) => {
+          // Vertex handles — purely visual, interaction handled by React event handlers
+          poly.forEach((p: PolygonPoint, pi: number) => {
             const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
             c.setAttribute('cx', String(p.x)); c.setAttribute('cy', String(p.y))
-            c.setAttribute('r', '0.02'); c.setAttribute('fill', '#502581')
+            c.setAttribute('r', drawing ? '0.025' : '0.015')
+            c.setAttribute('fill', drawing ? '#502581' : 'rgba(80,37,129,0.5)')
             svg.appendChild(c)
           })
           stage.appendChild(svg)
@@ -346,7 +358,36 @@ export default function Editor({
 
   // Mouse handlers for drag and resize
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement
+    const target = e.target as any
+
+    // Polygon vertex drag — check proximity to existing vertices
+    if (drawingPolygonIndex !== null) {
+      const imgEl = stageRef.current?.querySelector(`img[data-image-index="${drawingPolygonIndex}"]`) as HTMLImageElement
+      if (imgEl) {
+        const rect = imgEl.getBoundingClientRect()
+        const rx = (e.clientX - rect.left) / rect.width
+        const ry = (e.clientY - rect.top) / rect.height
+        const poly = layoutData.images[drawingPolygonIndex].polygon || []
+        const threshold = 0.04 // ~4% of image dimension
+        let closestIdx = -1
+        let closestDist = Infinity
+        for (let pi = 0; pi < poly.length; pi++) {
+          const dx = rx - poly[pi].x
+          const dy = ry - poly[pi].y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist < threshold && dist < closestDist) {
+            closestDist = dist
+            closestIdx = pi
+          }
+        }
+        if (closestIdx >= 0) {
+          polyDragRef.current = { imageIndex: drawingPolygonIndex, pointIndex: closestIdx, imgRect: rect, startX: e.clientX, startY: e.clientY, active: false }
+          polyDragUsedRef.current = true
+          e.preventDefault()
+          return
+        }
+      }
+    }
 
     // Resize handle
     if (target.dataset.resizeHandle !== undefined) {
@@ -407,15 +448,28 @@ export default function Editor({
       newImages[r.imageIndex] = { ...newImages[r.imageIndex], width: Math.max(50, r.origWidth + dx) }
       onLayoutChange({ ...layoutData, images: newImages, editorWidth: layoutWidth })
     }
+
+    if (polyDragRef.current) {
+      const pd = polyDragRef.current
+      const dx = e.clientX - pd.startX
+      const dy = e.clientY - pd.startY
+      // Require 5px movement before starting drag (prevent accidental moves on click)
+      if (!pd.active && Math.abs(dx) + Math.abs(dy) < 5) return
+      pd.active = true
+      const rx = Math.max(0, Math.min(1, (e.clientX - pd.imgRect.left) / pd.imgRect.width))
+      const ry = Math.max(0, Math.min(1, (e.clientY - pd.imgRect.top) / pd.imgRect.height))
+      const newImages = [...layoutData.images]
+      const poly = [...(newImages[pd.imageIndex].polygon || [])]
+      poly[pd.pointIndex] = { x: rx, y: ry }
+      newImages[pd.imageIndex] = { ...newImages[pd.imageIndex], polygon: poly }
+      onLayoutChange({ ...layoutData, images: newImages })
+    }
   }, [layoutData, onLayoutChange, findAnchorAtY])
 
   const handleMouseUp = useCallback(() => {
-    if (dragRef.current) {
-      dragRef.current = null
-    }
-    if (resizeRef.current) {
-      resizeRef.current = null
-    }
+    if (dragRef.current) dragRef.current = null
+    if (resizeRef.current) resizeRef.current = null
+    if (polyDragRef.current) polyDragRef.current = null
   }, [])
 
   // Click handler for polygon drawing and image selection
@@ -423,12 +477,19 @@ export default function Editor({
     const target = e.target as HTMLElement
 
     if (drawingPolygonIndex !== null) {
+      // Don't add point if we just dragged a vertex
+      if (polyDragUsedRef.current) {
+        polyDragUsedRef.current = false
+        return
+      }
+      // Calculate click position relative to the image being edited
       const imgEl = stageRef.current?.querySelector(`img[data-image-index="${drawingPolygonIndex}"]`) as HTMLImageElement
       if (!imgEl) return
       const rect = imgEl.getBoundingClientRect()
       const rx = (e.clientX - rect.left) / rect.width
       const ry = (e.clientY - rect.top) / rect.height
-      if (rx >= -0.15 && rx <= 1.15 && ry >= -0.15 && ry <= 1.15) {
+      // Only add point if click is near the image
+      if (rx >= -0.1 && rx <= 1.1 && ry >= -0.1 && ry <= 1.1) {
         const newImages = [...layoutData.images]
         const poly = newImages[drawingPolygonIndex].polygon || []
         newImages[drawingPolygonIndex] = {
@@ -513,16 +574,6 @@ export default function Editor({
         ))}
       </div>
 
-      {drawingPolygonIndex !== null && (
-        <div style={{ padding: '8px 12px', background: '#e67e22', color: 'white', fontSize: 14 }}>
-          Click around the subject to draw polygon.{' '}
-          <button type="button" onClick={() => setDrawingPolygonIndex(null)}
-            style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', padding: '2px 8px', borderRadius: 3, cursor: 'pointer' }}>
-            Done
-          </button>
-        </div>
-      )}
-
       {/* Editor container */}
       <div ref={containerRef}
         style={{
@@ -580,7 +631,7 @@ export default function Editor({
           }}>
             {[
               { label: selImg.float === 'right' ? '→' : '←', title: 'Toggle float', fn: () => handleToggleFloat(selectedImageIndex) },
-              { label: selImg.polygon?.length ? `◇${selImg.polygon.length}` : '◇', title: 'Polygon', fn: () => {
+              { label: selImg.polygon?.length ? `◇${selImg.polygon.length}` : '◇', title: 'Polygon', active: drawingPolygonIndex === selectedImageIndex, fn: () => {
                 if (drawingPolygonIndex === selectedImageIndex) setDrawingPolygonIndex(null)
                 else setDrawingPolygonIndex(selectedImageIndex)
               }},
@@ -591,12 +642,18 @@ export default function Editor({
                 }
               }] : []),
               { label: '×', title: 'Remove', fn: () => handleRemoveImage(selectedImageIndex) },
-            ].map((btn, i) => (
+            ].map((btn: any, i) => (
               <button key={i} type="button" title={btn.title}
                 onClick={(e) => { e.stopPropagation(); btn.fn() }}
-                style={{ padding: '3px 8px', background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13, borderRadius: 2 }}
-                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.2)' }}
-                onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent' }}>
+                style={{
+                  padding: '3px 8px', border: 'none', cursor: 'pointer', fontSize: 13, borderRadius: 2,
+                  background: btn.active ? '#e67e22' : 'transparent',
+                  color: 'white',
+                  fontWeight: btn.active ? 600 : 400,
+                  boxShadow: btn.active ? '0 0 6px rgba(230,126,34,0.5)' : 'none',
+                }}
+                onMouseEnter={(e) => { if (!btn.active) (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.2)' }}
+                onMouseLeave={(e) => { if (!btn.active) (e.target as HTMLElement).style.background = 'transparent' }}>
                 {btn.label}
               </button>
             ))}
