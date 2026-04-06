@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { Pen, LayoutGrid, Eye } from 'lucide-react'
+import { Pen, LayoutGrid, Eye, Smartphone } from 'lucide-react'
 import { usePretextEngine } from '../engine/pretext-loader'
 import { countWordsInText } from '../engine/layout'
 import Renderer from './Renderer'
 import type { Block, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
 
-type EditorMode = 'write' | 'layout' | 'preview'
+type EditorMode = 'write' | 'layout' | 'preview' | 'mobile'
 
 interface EditorProps {
   blocks: Block[]
@@ -72,20 +72,35 @@ export default function Editor({
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
   const [drawingPolygonIndex, setDrawingPolygonIndex] = useState<number | null>(null)
   const [activeModes, setActiveModes] = useState<Set<EditorMode>>(new Set(['layout']))
+  const [mobileWidth, setMobileWidth] = useState(375)
+  const mobileResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   const toggleMode = (m: EditorMode, shift: boolean) => {
     if (shift) {
       setActiveModes(prev => {
         const next = new Set(prev)
         if (next.has(m)) {
-          if (next.size > 1) next.delete(m) // don't remove last mode
+          if (next.size > 1) next.delete(m)
         } else {
           next.add(m)
         }
         return next
       })
     } else {
-      setActiveModes(new Set([m]))
+      // For mobile, toggle it alongside current modes
+      if (m === 'mobile') {
+        setActiveModes(prev => {
+          const next = new Set(prev)
+          if (next.has('mobile')) {
+            next.delete('mobile')
+          } else {
+            next.add('mobile')
+          }
+          return next
+        })
+      } else {
+        setActiveModes(new Set([m]))
+      }
     }
   }
 
@@ -347,6 +362,25 @@ export default function Editor({
     }
   }, [activeModes])
 
+  // Mobile preview resize handlers
+  const handleMobileResizeDown = useCallback((e: React.MouseEvent) => {
+    mobileResizeRef.current = { startX: e.clientX, startWidth: mobileWidth }
+    e.preventDefault()
+
+    const handleMove = (ev: MouseEvent) => {
+      if (!mobileResizeRef.current) return
+      const dx = ev.clientX - mobileResizeRef.current.startX
+      setMobileWidth(Math.max(200, Math.min(800, mobileResizeRef.current.startWidth + dx)))
+    }
+    const handleUp = () => {
+      mobileResizeRef.current = null
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }, [mobileWidth])
+
   // Handle markdown text changes
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value
@@ -542,12 +576,15 @@ export default function Editor({
     { key: 'write', label: 'Write', icon: <Pen size={14} /> },
     { key: 'layout', label: 'Layout', icon: <LayoutGrid size={14} /> },
     { key: 'preview', label: 'Preview', icon: <Eye size={14} /> },
+    { key: 'mobile', label: activeModes.has('mobile') ? `${mobileWidth}px` : '', icon: <Smartphone size={14} /> },
   ]
 
   return (
     <div style={{
       marginBottom: 20,
-      width: expandable ? `calc(${typeof width === 'number' ? width + 'px' : width || '100%'} * ${activeModes.size})` : width,
+      width: expandable
+        ? `calc(${typeof width === 'number' ? width + 'px' : width || '100%'} * ${activeModes.has('mobile') ? activeModes.size - 1 : activeModes.size}${activeModes.has('mobile') ? ` + ${mobileWidth + 42}px` : ''})`
+        : width,
       transition: 'width 0.2s ease',
     }}>
       {/* Toolbar */}
@@ -665,8 +702,59 @@ export default function Editor({
 
         {/* Preview panel */}
         {activeModes.has('preview') && (
-          <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
+          <div style={{ flex: 1, overflow: 'auto', padding: 20, borderRight: activeModes.has('mobile') ? '1px solid #ddd' : 'none' }}>
             <Renderer blocks={blocks} layout={layoutData} config={config} resolveImageUrl={resolveImageUrl} />
+          </div>
+        )}
+
+        {/* Mobile preview panel */}
+        {activeModes.has('mobile') && (
+          <div style={{
+            width: mobileWidth + 42,
+            minWidth: 242,
+            maxWidth: 842,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            padding: '20px 20px 0 20px',
+            background: '#f5f5f5',
+            position: 'relative',
+            flexShrink: 0,
+          }}>
+            <div style={{
+              width: mobileWidth,
+              background: 'white',
+              borderRadius: 8,
+              border: '1px solid #ddd',
+              overflow: 'auto',
+              flex: 1,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+            }}>
+              <div style={{ padding: 12 }}>
+                <Renderer blocks={blocks} layout={layoutData} config={config} resolveImageUrl={resolveImageUrl} />
+              </div>
+            </div>
+            {/* Resize handle */}
+            <div
+              onMouseDown={handleMobileResizeDown}
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                right: 0,
+                width: 20,
+                height: 20,
+                cursor: 'nwse-resize',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#aaa',
+                fontSize: 10,
+                userSelect: 'none',
+              }}
+            >
+              ◢
+            </div>
           </div>
         )}
       </div>
