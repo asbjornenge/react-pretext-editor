@@ -38,7 +38,7 @@ export default function Renderer({
     const scale = containerWidth / editorWidth
     const imgData = prepareImageData(layout.images || [], scale, containerWidth)
 
-    const cfg = { dropCap: false, ...config }
+    const cfg = { dropCap: false, ...config, columns: layout.columns || config?.columns || 1 }
 
     // Measure drop cap using a temporary element
     const measureDropCap = (char: string, font: string) => {

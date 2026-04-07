@@ -9,6 +9,8 @@ const DEFAULT_CONFIG: Required<LayoutConfig> = {
   blockGap: 16,
   imgPadding: 10,
   dropCap: false,
+  columns: 1,
+  minColumnWidth: 300,
 }
 
 export interface ImageData {
@@ -16,16 +18,17 @@ export interface ImageData {
   x: number
   width: number
   aspectRatio: number
-  anchorBlockIndex: number
-  anchorWordIndex: number
-  anchorWord: string
+  anchorBlockIndex?: number
+  anchorWordIndex?: number
+  anchorWord?: string
   polygon?: PolygonPoint[]
   resolvedY: number | null
+  absoluteY?: number  // User-set absolute y (takes precedence if no anchor)
   // Original image info for rendering
   url: string
   alt: string
   filename: string
-  float: 'left' | 'right'
+  float?: 'left' | 'right'
 }
 
 export interface LayoutElement {
@@ -142,11 +145,8 @@ export function prepareImageData(images: LayoutImage[], scale: number, container
   const imgScale = scale < 1 ? Math.sqrt(scale) : scale
   return images.map((img, i) => {
     const scaledWidth = img.width * imgScale
-    let scaledX = img.x * scale
-    // Ensure image doesn't overflow container
-    if (containerWidth && scaledX + scaledWidth > containerWidth) {
-      scaledX = Math.max(0, containerWidth - scaledWidth)
-    }
+    const scaledX = img.x * scale
+    const hasAnchor = img.anchorBlockIndex !== undefined && img.anchorWordIndex !== undefined
     return {
       index: i,
       x: scaledX,
@@ -156,7 +156,8 @@ export function prepareImageData(images: LayoutImage[], scale: number, container
       anchorWordIndex: img.anchorWordIndex,
       anchorWord: img.anchorWord,
       polygon: img.polygon,
-      resolvedY: null,
+      resolvedY: hasAnchor ? null : (img.y !== undefined ? img.y * scale : 0),
+      absoluteY: img.y !== undefined ? img.y * scale : undefined,
       url: img.url,
       alt: img.alt,
       filename: img.filename,
@@ -170,20 +171,19 @@ interface PretextEngine {
   layoutNextLine: (prepared: any, cursor: any, maxWidth: number) => any
 }
 
-export function layoutBlocks(
+// Single-column layout pass — used both standalone and as first pass for multi-column
+function layoutSingleColumn(
   blocks: Block[],
   imgData: ImageData[],
   containerWidth: number,
   engine: PretextEngine,
-  config: LayoutConfig = {},
+  cfg: Required<LayoutConfig>,
   measureDropCap?: (char: string, font: string) => { width: number; height: number },
-): LayoutResult {
-  const cfg = { ...DEFAULT_CONFIG, ...config }
+): { elements: LayoutElement[]; totalHeight: number } {
   const elements: LayoutElement[] = []
   let y = 0
   let isFirstParagraph = true
 
-  // Interleaved per-block: pre-scan to resolve anchors, then render
   for (let bi = 0; bi < blocks.length; bi++) {
     const block = blocks[bi]
     const isHeading = block.type === 'heading'
@@ -193,7 +193,7 @@ export function layoutBlocks(
 
     if (isHeading) y += cfg.blockGap
 
-    // Pre-scan this block to find anchor positions (using full width)
+    // Pre-scan this block to find anchor positions
     const prePrepared = engine.prepareWithSegments(text, font)
     let preCursor = { segmentIndex: 0, graphemeIndex: 0 }
     let preChars = 0
@@ -208,7 +208,7 @@ export function layoutBlocks(
 
       for (const img of imgData) {
         if (img.resolvedY !== null) continue
-        if (img.anchorBlockIndex === bi && img.anchorWordIndex >= prevWords && img.anchorWordIndex < currWords) {
+        if (img.anchorBlockIndex === bi && img.anchorWordIndex !== undefined && img.anchorWordIndex >= prevWords && img.anchorWordIndex < currWords) {
           img.resolvedY = preY + lineHeight
         }
       }
@@ -216,8 +216,7 @@ export function layoutBlocks(
       preY += lineHeight
     }
 
-    // Render this block with slot-based wrapping
-    // Drop cap for first paragraph
+    // Drop cap
     let dropCapWidth = 0
     let dropCapHeight = 0
     let dcTop = 0
@@ -290,20 +289,154 @@ export function layoutBlocks(
     y += cfg.blockGap
   }
 
-  // Add image elements
-  for (const img of imgData) {
-    if (img.resolvedY === null) continue
-    elements.push({
-      type: 'image',
-      x: img.x,
-      y: img.resolvedY,
-      width: img.width,
-      imageIndex: img.index,
-      url: img.url,
-      alt: img.alt,
-      polygon: img.polygon,
-    })
+  return { elements, totalHeight: y }
+}
+
+export function layoutBlocks(
+  blocks: Block[],
+  imgData: ImageData[],
+  containerWidth: number,
+  engine: PretextEngine,
+  config: LayoutConfig = {},
+  measureDropCap?: (char: string, font: string) => { width: number; height: number },
+): LayoutResult {
+  const cfg = { ...DEFAULT_CONFIG, ...config }
+
+  // Determine effective column count
+  const columnGap = 20
+  let numColumns = cfg.columns
+  if (numColumns > 1 && containerWidth / numColumns < cfg.minColumnWidth) {
+    numColumns = Math.max(1, Math.floor(containerWidth / cfg.minColumnWidth))
   }
 
-  return { elements, totalHeight: y }
+  const columnWidth = numColumns > 1
+    ? (containerWidth - (numColumns - 1) * columnGap) / numColumns
+    : containerWidth
+
+  // Pass 1: Single column layout with column width to resolve anchors and estimate height
+  // Clone imgData so we don't mutate the input (resolvedY gets reset)
+  const probeImgData = imgData.map(img => ({ ...img, resolvedY: img.absoluteY !== undefined ? img.absoluteY : null }))
+  const probe = layoutSingleColumn(blocks, probeImgData, columnWidth, engine, cfg, measureDropCap)
+
+  // Copy resolved anchor Ys back to original imgData
+  for (let i = 0; i < imgData.length; i++) {
+    if (imgData[i].absoluteY === undefined) {
+      imgData[i].resolvedY = probeImgData[i].resolvedY
+    } else {
+      imgData[i].resolvedY = imgData[i].absoluteY!
+    }
+  }
+
+  // Single column — use probe result directly
+  if (numColumns <= 1) {
+    const elements = [...probe.elements]
+    for (const img of imgData) {
+      if (img.resolvedY === null) continue
+      elements.push({
+        type: 'image',
+        x: img.x,
+        y: img.resolvedY,
+        width: img.width,
+        imageIndex: img.index,
+        url: img.url,
+        alt: img.alt,
+        polygon: img.polygon,
+      })
+    }
+    return { elements, totalHeight: probe.totalHeight }
+  }
+
+  // Multi-column: render column by column, streaming text between columns
+  const columnHeight = Math.ceil(probe.totalHeight / numColumns)
+
+  // Assign each image to a column based on its resolved y, with column-relative y
+  const columnImages: ImageData[][] = Array.from({ length: numColumns }, () => [])
+  for (const img of imgData) {
+    if (img.resolvedY === null) continue
+    const col = Math.max(0, Math.min(numColumns - 1, Math.floor(img.resolvedY / columnHeight)))
+    const colRelY = img.resolvedY - col * columnHeight
+    columnImages[col].push({ ...img, resolvedY: colRelY })
+  }
+
+  const elements: LayoutElement[] = []
+  let currentBlockIdx = 0
+  let currentCursor: any = null
+  let blockWordCount = 0
+
+  columnLoop:
+  for (let c = 0; c < numColumns; c++) {
+    const colX = c * (columnWidth + columnGap)
+    const colImgs = columnImages[c]
+    let y = 0
+
+    while (currentBlockIdx < blocks.length) {
+      const block = blocks[currentBlockIdx]
+      const isHeading = block.type === 'heading'
+      const font = isHeading ? cfg.headingFont : cfg.bodyFont
+      const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
+
+      // Heading gap only at block start
+      if (isHeading && currentCursor === null) y += cfg.blockGap
+
+      const prepared = engine.prepareWithSegments(block.text, font)
+      let cursor = currentCursor || { segmentIndex: 0, graphemeIndex: 0 }
+      let blockDone = false
+
+      while (!blockDone) {
+        // Check column overflow
+        if (y >= columnHeight && c < numColumns - 1) {
+          currentCursor = cursor
+          continue columnLoop
+        }
+        const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding)
+        if (slots.length === 0) { y += lineHeight; continue }
+        let renderedOnLine = false
+        for (const slot of slots) {
+          const line = engine.layoutNextLine(prepared, cursor, slot.right - slot.left)
+          if (!line) { blockDone = true; break }
+          const words = line.text.trim().split(/\s+/).filter((w: string) => w.length > 0)
+          elements.push({
+            type: 'text',
+            text: line.text,
+            x: slot.left + colX,
+            y,
+            font,
+            blockIndex: currentBlockIdx,
+            wordIndex: blockWordCount,
+          })
+          blockWordCount += words.length
+          cursor = line.end
+          renderedOnLine = true
+        }
+        if (renderedOnLine) y += lineHeight
+      }
+
+      // Block done, advance
+      currentBlockIdx++
+      currentCursor = null
+      blockWordCount = 0
+      y += cfg.blockGap
+    }
+    break // All blocks rendered
+  }
+
+  // Add image elements with column offsets
+  for (let c = 0; c < numColumns; c++) {
+    const colX = c * (columnWidth + columnGap)
+    for (const img of columnImages[c]) {
+      if (img.resolvedY === null) continue
+      elements.push({
+        type: 'image',
+        x: img.x + colX,
+        y: img.resolvedY,
+        width: img.width,
+        imageIndex: img.index,
+        url: img.url,
+        alt: img.alt,
+        polygon: img.polygon,
+      })
+    }
+  }
+
+  return { elements, totalHeight: columnHeight }
 }

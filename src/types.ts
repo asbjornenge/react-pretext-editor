@@ -9,18 +9,21 @@ export interface LayoutImage {
   alt: string
   url: string
   aspectRatio: number
-  anchorBlockIndex: number
-  anchorWordIndex: number
-  anchorWord: string
+  // Optional anchor - if set, image y follows the anchored word. Otherwise uses absolute y.
+  anchorBlockIndex?: number
+  anchorWordIndex?: number
+  anchorWord?: string
   x: number
+  y?: number  // Absolute y position (used when not anchored)
   width: number
-  float: 'left' | 'right'
+  float?: 'left' | 'right'
   polygon?: PolygonPoint[]
 }
 
 export interface LayoutData {
   images: LayoutImage[]
   editorWidth?: number
+  columns?: number
 }
 
 export interface Block {
@@ -38,6 +41,8 @@ export interface LayoutConfig {
   blockGap?: number
   imgPadding?: number
   dropCap?: boolean
+  columns?: number
+  minColumnWidth?: number
 }
 
 export interface MediaItem {

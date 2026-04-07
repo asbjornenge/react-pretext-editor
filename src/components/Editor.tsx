@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { Pen, LayoutGrid, Eye, Smartphone } from 'lucide-react'
+import { Pen, LayoutGrid, Eye, Smartphone, Columns2 } from 'lucide-react'
 import { usePretextEngine } from '../engine/pretext-loader'
 import { countWordsInText } from '../engine/layout'
 import Renderer from './Renderer'
@@ -178,13 +178,23 @@ export default function Editor({
     const stage = stageRef.current
     const rawWidth = layoutPanelRef.current?.offsetWidth || 700
     const pad = 20
-    const containerWidth = rawWidth - pad * 2
+    const fullContainerWidth = rawWidth - pad * 2
     const { bodyFont, headingFont, bodyLineHeight, headingLineHeight, blockGap, imgPadding } = cfg
     const images = layoutData.images || []
 
+    // Column setup
+    const columnGap = 20
+    const numColumns = Math.max(1, Math.min(layoutData.columns || 1, Math.floor(fullContainerWidth / 300)))
+    const containerWidth = numColumns > 1
+      ? (fullContainerWidth - (numColumns - 1) * columnGap) / numColumns
+      : fullContainerWidth
+
     stage.innerHTML = ''
 
-    const imgData = images.map((img) => ({ ...img, resolvedY: null as number | null }))
+    const imgData = images.map((img) => ({
+      ...img,
+      resolvedY: (img.y !== undefined ? img.y : null) as number | null,
+    }))
 
     function getBlockedInterval(img: typeof imgData[0], currentY: number) {
       if (img.resolvedY === null) return null
@@ -245,7 +255,7 @@ export default function Editor({
         const cw = countWordsInText(block.text, pChars)
         for (const img of imgData) {
           if (img.resolvedY !== null) continue
-          if (img.anchorBlockIndex === bi && img.anchorWordIndex >= pw && img.anchorWordIndex < cw)
+          if (img.anchorBlockIndex === bi && img.anchorWordIndex !== undefined && img.anchorWordIndex >= pw && img.anchorWordIndex < cw)
             img.resolvedY = pY + lineHeight
         }
         pc = pl.end; pY += lineHeight
@@ -339,8 +349,25 @@ export default function Editor({
       }
     })
 
-    stage.style.height = (y + pad * 2) + 'px'
-  }, [engine, blocks, layoutData.images, selectedImageIndex, drawingPolygonIndex, cfg])
+    // Redistribute elements into columns
+    if (numColumns > 1) {
+      const columnHeight = Math.ceil(y / numColumns)
+      const children = Array.from(stage.children) as HTMLElement[]
+      for (const child of children) {
+        const elY = parseFloat(child.style.top) - pad
+        const col = Math.min(Math.floor(elY / columnHeight), numColumns - 1)
+        if (col > 0) {
+          const colOffset = col * (containerWidth + columnGap)
+          const newY = elY - col * columnHeight
+          child.style.left = (parseFloat(child.style.left) - pad + colOffset + pad) + 'px'
+          child.style.top = (newY + pad) + 'px'
+        }
+      }
+      stage.style.height = (columnHeight + pad * 2) + 'px'
+    } else {
+      stage.style.height = (y + pad * 2) + 'px'
+    }
+  }, [engine, blocks, layoutData.images, layoutData.columns, selectedImageIndex, drawingPolygonIndex, cfg])
 
   useEffect(() => {
     document.fonts.ready.then(() => renderPretext())
@@ -460,16 +487,17 @@ export default function Editor({
       if (!drag.active && Math.abs(dx) + Math.abs(dy) < 3) return
       drag.active = true
 
-      const newX = Math.max(0, Math.min(layoutWidth - 50, drag.origX + dx))
-      const dropY = Math.max(0, drag.origImgY + dy - 20) // subtract pad for layout coords
+      // Free positioning — allow dragging outside bounds (to an extent)
+      const newX = drag.origX + dx
+      const newY = Math.max(0, drag.origImgY + dy - 20) // subtract pad for layout coords
 
-      // Calculate anchor at current drop position
-      const anchor = findAnchorAtY(dropY)
       const newImages = [...layoutData.images]
+      // Drop anchor when dragging freely, use absolute y
+      const { anchorBlockIndex: _a, anchorWordIndex: _b, anchorWord: _c, ...rest } = newImages[drag.imageIndex]
       newImages[drag.imageIndex] = {
-        ...newImages[drag.imageIndex],
+        ...rest,
         x: newX,
-        ...(anchor ? { anchorBlockIndex: anchor.blockIndex, anchorWordIndex: anchor.wordIndex, anchorWord: anchor.word } : {}),
+        y: newY,
       }
       onLayoutChange({ ...layoutData, images: newImages, editorWidth: layoutWidth })
     }
@@ -609,6 +637,22 @@ export default function Editor({
             {m.label}
           </button>
         ))}
+        {/* Column controls */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Columns2 size={14} color="#6a4c93" />
+          {[1, 2, 3].map(n => (
+            <button key={n} type="button" onClick={() => onLayoutChange({ ...layoutData, columns: n })}
+              style={{
+                padding: '3px 8px', fontSize: 12, cursor: 'pointer',
+                background: (layoutData.columns || 1) === n ? '#502581' : 'transparent',
+                color: (layoutData.columns || 1) === n ? 'white' : '#6a4c93',
+                border: 'none', borderRadius: 3,
+                fontWeight: (layoutData.columns || 1) === n ? 600 : 400,
+              }}>
+              {n}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Editor container */}
