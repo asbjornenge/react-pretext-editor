@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { Pen, LayoutGrid, Eye, Smartphone, Columns2 } from 'lucide-react'
 import { usePretextEngine } from '../engine/pretext-loader'
-import { countWordsInText } from '../engine/layout'
 import Renderer from './Renderer'
 import type { Block, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
 
@@ -138,39 +137,7 @@ export default function Editor({
     return url
   }
 
-  // Find anchor at a Y position in the text flow
-  const findAnchorAtY = useCallback((targetY: number) => {
-    if (!engine || blocks.length === 0) return null
-    const { prepareWithSegments, layoutNextLine } = engine
-    const containerWidth = (layoutPanelRef.current?.offsetWidth || 700) - 40
-    let y = 0
-    for (let bi = 0; bi < blocks.length; bi++) {
-      const block = blocks[bi]
-      const isHeading = block.type === 'heading'
-      const font = isHeading ? cfg.headingFont : cfg.bodyFont
-      const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
-      if (isHeading) y += cfg.blockGap
-      const prepared = prepareWithSegments(block.text, font)
-      let cursor = { segmentIndex: 0, graphemeIndex: 0 }, chars = 0
-      while (true) {
-        const line = layoutNextLine(prepared, cursor, containerWidth)
-        if (!line) break
-        const prevWords = countWordsInText(block.text, chars)
-        chars += line.text.length
-        if (y + lineHeight >= targetY) {
-          const allText = block.text.slice(0, chars).trim().split(/\s+/)
-          return { blockIndex: bi, wordIndex: prevWords, word: allText[prevWords] || allText[allText.length - 1] || '' }
-        }
-        cursor = line.end
-        y += lineHeight
-      }
-      y += cfg.blockGap
-    }
-    const last = blocks[blocks.length - 1]
-    return { blockIndex: blocks.length - 1, wordIndex: 0, word: last.text.trim().split(/\s+/)[0] || '' }
-  }, [engine, blocks, cfg])
-
-  // Core pretext rendering
+  // Core pretext rendering — free image positioning with column-aware text wrapping
   const renderPretext = useCallback(() => {
     if (!engine || !stageRef.current || blocks.length === 0) return
 
@@ -185,31 +152,27 @@ export default function Editor({
     // Column setup
     const columnGap = 20
     const numColumns = Math.max(1, Math.min(layoutData.columns || 1, Math.floor(fullContainerWidth / 300)))
-    const containerWidth = numColumns > 1
+    const columnWidth = numColumns > 1
       ? (fullContainerWidth - (numColumns - 1) * columnGap) / numColumns
       : fullContainerWidth
 
     stage.innerHTML = ''
 
-    const imgData = images.map((img) => ({
-      ...img,
-      resolvedY: (img.y !== undefined ? img.y : null) as number | null,
-    }))
-
-    function getBlockedInterval(img: typeof imgData[0], currentY: number) {
-      if (img.resolvedY === null) return null
+    // Helper: compute blocked interval for an image at given y (column-local coordinates)
+    type Img = typeof images[0]
+    const getBlockedInterval = (img: Img, imgXLocal: number, imgY: number, currentY: number) => {
       const imgH = img.width * (img.aspectRatio || 1.2)
-      if (currentY < img.resolvedY || currentY >= img.resolvedY + imgH + imgPadding) return null
-      const rect = { left: img.x - imgPadding, right: img.x + img.width + imgPadding }
+      if (currentY < imgY || currentY >= imgY + imgH + imgPadding) return null
+      const rect = { left: imgXLocal - imgPadding, right: imgXLocal + img.width + imgPadding }
       if (img.polygon && img.polygon.length >= 3) {
-        const relY = (currentY - img.resolvedY) / imgH
+        const relY = (currentY - imgY) / imgH
         if (relY < 0 || relY > 1) return rect
         let minX = Infinity, maxX = -Infinity
         for (let i = 0; i < img.polygon.length; i++) {
           const a = img.polygon[i], b = img.polygon[(i + 1) % img.polygon.length]
           if ((a.y <= relY && b.y > relY) || (b.y <= relY && a.y > relY)) {
             const t = (relY - a.y) / (b.y - a.y)
-            const absX = img.x + (a.x + t * (b.x - a.x)) * img.width
+            const absX = imgXLocal + (a.x + t * (b.x - a.x)) * img.width
             minX = Math.min(minX, absX); maxX = Math.max(maxX, absX)
           }
         }
@@ -218,79 +181,116 @@ export default function Editor({
       return rect
     }
 
-    function getSlots(currentY: number) {
+    // Helper: get free slots for text at current y given column's images
+    const getSlotsForColumn = (colImgs: { img: Img; xLocal: number }[], currentY: number) => {
       const blocked: { left: number; right: number }[] = []
-      for (const img of imgData) {
-        const interval = getBlockedInterval(img, currentY)
+      for (const entry of colImgs) {
+        const interval = getBlockedInterval(entry.img, entry.xLocal, entry.img.y, currentY)
         if (interval) blocked.push(interval)
       }
-      if (blocked.length === 0) return [{ left: 0, right: containerWidth }]
+      if (blocked.length === 0) return [{ left: 0, right: columnWidth }]
       blocked.sort((a, b) => a.left - b.left)
       const slots: { left: number; right: number }[] = []
       let cur = 0
       for (const b of blocked) {
-        if (b.left > cur) slots.push({ left: cur, right: b.left })
+        if (b.left > cur) slots.push({ left: cur, right: Math.min(b.left, columnWidth) })
         cur = Math.max(cur, b.right)
       }
-      if (cur < containerWidth) slots.push({ left: cur, right: containerWidth })
+      if (cur < columnWidth) slots.push({ left: cur, right: columnWidth })
       return slots.filter(s => (s.right - s.left) > 30)
     }
 
-    let y = 0
-    for (let bi = 0; bi < blocks.length; bi++) {
-      const block = blocks[bi]
+    // Estimate column height from text-only probe
+    let textHeight = 0
+    for (const block of blocks) {
       const isHeading = block.type === 'heading'
       const font = isHeading ? headingFont : bodyFont
       const lineHeight = isHeading ? headingLineHeight : bodyLineHeight
-      if (isHeading) y += blockGap
-
-      // Pre-scan for anchors
-      const pre = prepareWithSegments(block.text, font)
-      let pc = { segmentIndex: 0, graphemeIndex: 0 }, pChars = 0, pY = y
-      while (true) {
-        const pl = layoutNextLine(pre, pc, containerWidth)
-        if (!pl) break
-        const pw = countWordsInText(block.text, pChars)
-        pChars += pl.text.length
-        const cw = countWordsInText(block.text, pChars)
-        for (const img of imgData) {
-          if (img.resolvedY !== null) continue
-          if (img.anchorBlockIndex === bi && img.anchorWordIndex !== undefined && img.anchorWordIndex >= pw && img.anchorWordIndex < cw)
-            img.resolvedY = pY + lineHeight
-        }
-        pc = pl.end; pY += lineHeight
-      }
-
-      // Render text
+      if (isHeading) textHeight += blockGap
       const prepared = prepareWithSegments(block.text, font)
-      let cursor = { segmentIndex: 0, graphemeIndex: 0 }, done = false
-      while (!done) {
-        const slots = getSlots(y)
-        if (slots.length === 0) { y += lineHeight; continue }
-        let rendered = false
-        for (const slot of slots) {
-          const line = layoutNextLine(prepared, cursor, slot.right - slot.left)
-          if (!line) { done = true; break }
-          const el = document.createElement('span')
-          el.textContent = line.text
-          el.style.cssText = `position:absolute;font:${font};white-space:pre;left:${slot.left + pad}px;top:${y + pad}px;color:#333;`
-          stage.appendChild(el)
-          cursor = line.end; rendered = true
-        }
-        if (rendered) y += lineHeight
+      let cursor = { segmentIndex: 0, graphemeIndex: 0 }
+      while (true) {
+        const line = layoutNextLine(prepared, cursor, columnWidth)
+        if (!line) break
+        textHeight += lineHeight
+        cursor = line.end
       }
-      y += blockGap
+      textHeight += blockGap
+    }
+    const columnHeight = numColumns > 1 ? Math.ceil(textHeight / numColumns) : textHeight
+
+    // Per-column image lists with column-local x
+    // An image can belong to multiple columns if its x range overlaps them
+    const columnImages: { img: Img; xLocal: number }[][] = Array.from({ length: numColumns }, () => [])
+    for (const img of images) {
+      for (let col = 0; col < numColumns; col++) {
+        const colStart = col * (columnWidth + columnGap)
+        const colEnd = colStart + columnWidth
+        // Image overlaps this column if its x range intersects
+        if (img.x + img.width > colStart && img.x < colEnd) {
+          columnImages[col].push({ img, xLocal: img.x - colStart })
+        }
+      }
     }
 
-    // Render images
-    imgData.forEach((img, i) => {
-      if (img.resolvedY === null) return
+    // Render text column by column
+    let currentBlockIdx = 0
+    let currentCursor: any = null
+
+    columnLoop:
+    for (let c = 0; c < numColumns; c++) {
+      const colX = c * (columnWidth + columnGap)
+      const colImgs = columnImages[c]
+      let y = 0
+
+      while (currentBlockIdx < blocks.length) {
+        const block = blocks[currentBlockIdx]
+        const isHeading = block.type === 'heading'
+        const font = isHeading ? headingFont : bodyFont
+        const lineHeight = isHeading ? headingLineHeight : bodyLineHeight
+
+        if (isHeading && currentCursor === null) y += blockGap
+
+        const prepared = prepareWithSegments(block.text, font)
+        let cursor = currentCursor || { segmentIndex: 0, graphemeIndex: 0 }
+        let blockDone = false
+
+        while (!blockDone) {
+          if (numColumns > 1 && y >= columnHeight && c < numColumns - 1) {
+            currentCursor = cursor
+            continue columnLoop
+          }
+          const slots = getSlotsForColumn(colImgs, y)
+          if (slots.length === 0) { y += lineHeight; continue }
+          let rendered = false
+          for (const slot of slots) {
+            const line = layoutNextLine(prepared, cursor, slot.right - slot.left)
+            if (!line) { blockDone = true; break }
+            const el = document.createElement('span')
+            el.textContent = line.text
+            el.style.cssText = `position:absolute;font:${font};white-space:pre;left:${slot.left + colX + pad}px;top:${y + pad}px;color:#333;`
+            stage.appendChild(el)
+            cursor = line.end
+            rendered = true
+          }
+          if (rendered) y += lineHeight
+        }
+
+        currentBlockIdx++
+        currentCursor = null
+        y += blockGap
+      }
+      break
+    }
+
+    // Render images at their absolute positions
+    images.forEach((img, i) => {
       const imgEl = document.createElement('img')
       imgEl.src = resolveUrl(img.url, img.filename)
       imgEl.alt = img.alt
       imgEl.dataset.imageIndex = String(i)
       const imgCursor = drawingPolygonIndex === i ? 'crosshair' : 'grab'
-      imgEl.style.cssText = `position:absolute;left:${img.x + pad}px;top:${img.resolvedY + pad}px;width:${img.width}px;border:2px solid ${selectedImageIndex === i ? '#502581' : 'transparent'};border-radius:4px;cursor:${imgCursor};`
+      imgEl.style.cssText = `position:absolute;left:${img.x + pad}px;top:${img.y + pad}px;width:${img.width}px;border:2px solid ${selectedImageIndex === i ? '#502581' : 'transparent'};border-radius:4px;cursor:${imgCursor};`
 
       // Resize handle
       const handle = document.createElement('div')
@@ -298,7 +298,7 @@ export default function Editor({
       handle.style.cssText = `position:absolute;width:8px;height:8px;background:#502581;cursor:nwse-resize;border-radius:1px;opacity:0.7;display:none;`
       const posHandle = () => {
         handle.style.left = `${img.x + img.width - 4 + pad}px`
-        handle.style.top = `${img.resolvedY! + imgEl.offsetHeight - 4 + pad}px`
+        handle.style.top = `${img.y + imgEl.offsetHeight - 4 + pad}px`
         handle.style.display = 'block'
       }
       imgEl.onload = posHandle
@@ -307,23 +307,16 @@ export default function Editor({
       stage.appendChild(imgEl)
       stage.appendChild(handle)
 
-      // Anchor label
-      const label = document.createElement('div')
-      label.style.cssText = `position:absolute;left:${img.x + pad}px;top:${img.resolvedY! - 16 + pad}px;font-size:10px;color:#502581;font-weight:bold;pointer-events:none;`
-      label.textContent = `⚓ "${img.anchorWord || '?'}"`
-      stage.appendChild(label)
-
-      // Polygon SVG overlay — always show if polygon exists
+      // Polygon SVG overlay
       const poly = img.polygon || []
       const drawing = drawingPolygonIndex === i
       if (poly.length > 0 || drawing) {
         const drawPoly = () => {
           const h = imgEl.offsetHeight || img.width * (img.aspectRatio || 1.2)
           const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-          svg.style.cssText = `position:absolute;left:${img.x + pad}px;top:${img.resolvedY! + pad}px;width:${img.width}px;height:${h}px;pointer-events:none;`
+          svg.style.cssText = `position:absolute;left:${img.x + pad}px;top:${img.y + pad}px;width:${img.width}px;height:${h}px;pointer-events:none;`
           svg.setAttribute('viewBox', '0 0 1 1')
           svg.setAttribute('preserveAspectRatio', 'none')
-          // Draw polygon path
           if (poly.length >= 2) {
             const d = poly.map((p: PolygonPoint, j: number) => `${j === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + (poly.length >= 3 ? ' Z' : '')
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
@@ -334,8 +327,7 @@ export default function Editor({
             path.setAttribute('stroke-dasharray', '0.02 0.015')
             svg.appendChild(path)
           }
-          // Vertex handles — purely visual, interaction handled by React event handlers
-          poly.forEach((p: PolygonPoint, pi: number) => {
+          poly.forEach((p: PolygonPoint) => {
             const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
             c.setAttribute('cx', String(p.x)); c.setAttribute('cy', String(p.y))
             c.setAttribute('r', drawing ? '0.025' : '0.015')
@@ -349,24 +341,7 @@ export default function Editor({
       }
     })
 
-    // Redistribute elements into columns
-    if (numColumns > 1) {
-      const columnHeight = Math.ceil(y / numColumns)
-      const children = Array.from(stage.children) as HTMLElement[]
-      for (const child of children) {
-        const elY = parseFloat(child.style.top) - pad
-        const col = Math.min(Math.floor(elY / columnHeight), numColumns - 1)
-        if (col > 0) {
-          const colOffset = col * (containerWidth + columnGap)
-          const newY = elY - col * columnHeight
-          child.style.left = (parseFloat(child.style.left) - pad + colOffset + pad) + 'px'
-          child.style.top = (newY + pad) + 'px'
-        }
-      }
-      stage.style.height = (columnHeight + pad * 2) + 'px'
-    } else {
-      stage.style.height = (y + pad * 2) + 'px'
-    }
+    stage.style.height = (columnHeight + pad * 2) + 'px'
   }, [engine, blocks, layoutData.images, layoutData.columns, selectedImageIndex, drawingPolygonIndex, cfg])
 
   useEffect(() => {
@@ -487,15 +462,13 @@ export default function Editor({
       if (!drag.active && Math.abs(dx) + Math.abs(dy) < 3) return
       drag.active = true
 
-      // Free positioning — allow dragging outside bounds (to an extent)
+      // Free positioning — allow dragging anywhere in the layout space
       const newX = drag.origX + dx
       const newY = Math.max(0, drag.origImgY + dy - 20) // subtract pad for layout coords
 
       const newImages = [...layoutData.images]
-      // Drop anchor when dragging freely, use absolute y
-      const { anchorBlockIndex: _a, anchorWordIndex: _b, anchorWord: _c, ...rest } = newImages[drag.imageIndex]
       newImages[drag.imageIndex] = {
-        ...rest,
+        ...newImages[drag.imageIndex],
         x: newX,
         y: newY,
       }
@@ -526,7 +499,7 @@ export default function Editor({
       newImages[pd.imageIndex] = { ...newImages[pd.imageIndex], polygon: poly }
       onLayoutChange({ ...layoutData, images: newImages })
     }
-  }, [layoutData, onLayoutChange, findAnchorAtY])
+  }, [layoutData, onLayoutChange])
 
   const handleMouseUp = useCallback(() => {
     if (dragRef.current) dragRef.current = null
@@ -581,8 +554,9 @@ export default function Editor({
     const layoutWidth = (layoutPanelRef.current?.offsetWidth || 700) - 40
     const newImages = [...layoutData.images]
     const img = newImages[index]
-    const newFloat = img.float === 'right' ? 'left' : 'right'
-    newImages[index] = { ...img, float: newFloat, x: newFloat === 'right' ? layoutWidth - img.width : 0 }
+    // Toggle between left (x=0) and right (x=layoutWidth-width)
+    const isRight = img.x > layoutWidth / 2
+    newImages[index] = { ...img, x: isRight ? 0 : layoutWidth - img.width }
     onLayoutChange({ ...layoutData, images: newImages, editorWidth: layoutWidth })
   }
 
@@ -711,7 +685,7 @@ export default function Editor({
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           }}>
             {[
-              { label: selImg.float === 'right' ? '→' : '←', title: 'Toggle float', fn: () => handleToggleFloat(selectedImageIndex) },
+              { label: '⇄', title: 'Toggle left/right', fn: () => handleToggleFloat(selectedImageIndex) },
               { label: selImg.polygon?.length ? `◇${selImg.polygon.length}` : '◇', title: 'Polygon', active: drawingPolygonIndex === selectedImageIndex, fn: () => {
                 if (drawingPolygonIndex === selectedImageIndex) setDrawingPolygonIndex(null)
                 else setDrawingPolygonIndex(selectedImageIndex)

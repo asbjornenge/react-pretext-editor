@@ -16,19 +16,14 @@ const DEFAULT_CONFIG: Required<LayoutConfig> = {
 export interface ImageData {
   index: number
   x: number
+  y: number
   width: number
   aspectRatio: number
-  anchorBlockIndex?: number
-  anchorWordIndex?: number
-  anchorWord?: string
   polygon?: PolygonPoint[]
-  resolvedY: number | null
-  absoluteY?: number  // User-set absolute y (takes precedence if no anchor)
   // Original image info for rendering
   url: string
   alt: string
   filename: string
-  float?: 'left' | 'right'
 }
 
 export interface LayoutElement {
@@ -85,15 +80,16 @@ export function getBlockedInterval(
   img: ImageData,
   currentY: number,
   imgPadding: number,
+  imgX?: number,  // Override x (for column-local rendering)
 ): { left: number; right: number } | null {
-  if (img.resolvedY === null) return null
   const imgH = img.width * (img.aspectRatio || 1.2)
-  if (currentY < img.resolvedY || currentY >= img.resolvedY + imgH + imgPadding) return null
+  if (currentY < img.y || currentY >= img.y + imgH + imgPadding) return null
 
-  const rectFallback = { left: img.x - imgPadding, right: img.x + img.width + imgPadding }
+  const x = imgX !== undefined ? imgX : img.x
+  const rectFallback = { left: x - imgPadding, right: x + img.width + imgPadding }
 
   if (img.polygon && img.polygon.length >= 3) {
-    const relY = (currentY - img.resolvedY) / imgH
+    const relY = (currentY - img.y) / imgH
     if (relY < 0 || relY > 1) return rectFallback
 
     let minX = Infinity
@@ -105,7 +101,7 @@ export function getBlockedInterval(
       if ((a.y <= relY && b.y > relY) || (b.y <= relY && a.y > relY)) {
         const t = (relY - a.y) / (b.y - a.y)
         const ix = a.x + t * (b.x - a.x)
-        const absX = img.x + ix * img.width
+        const absX = x + ix * img.width
         minX = Math.min(minX, absX)
         maxX = Math.max(maxX, absX)
       }
@@ -122,10 +118,11 @@ export function getSlots(
   currentY: number,
   containerWidth: number,
   imgPadding: number,
+  imgXOverrides?: number[],
 ): { left: number; right: number }[] {
   const blocked: { left: number; right: number }[] = []
-  for (const img of imgData) {
-    const interval = getBlockedInterval(img, currentY, imgPadding)
+  for (let i = 0; i < imgData.length; i++) {
+    const interval = getBlockedInterval(imgData[i], currentY, imgPadding, imgXOverrides?.[i])
     if (interval) blocked.push(interval)
   }
   if (blocked.length === 0) return [{ left: 0, right: containerWidth }]
@@ -133,37 +130,27 @@ export function getSlots(
   const slots: { left: number; right: number }[] = []
   let cur = 0
   for (const b of blocked) {
-    if (b.left > cur) slots.push({ left: cur, right: b.left })
+    if (b.left > cur) slots.push({ left: cur, right: Math.min(b.left, containerWidth) })
     cur = Math.max(cur, b.right)
   }
   if (cur < containerWidth) slots.push({ left: cur, right: containerWidth })
   return slots.filter(s => (s.right - s.left) > 30)
 }
 
-export function prepareImageData(images: LayoutImage[], scale: number, containerWidth?: number): ImageData[] {
+export function prepareImageData(images: LayoutImage[], scale: number, _containerWidth?: number): ImageData[] {
   // Use sqrt scaling for image width — images shrink slower than text
   const imgScale = scale < 1 ? Math.sqrt(scale) : scale
-  return images.map((img, i) => {
-    const scaledWidth = img.width * imgScale
-    const scaledX = img.x * scale
-    const hasAnchor = img.anchorBlockIndex !== undefined && img.anchorWordIndex !== undefined
-    return {
-      index: i,
-      x: scaledX,
-      width: scaledWidth,
-      aspectRatio: img.aspectRatio,
-      anchorBlockIndex: img.anchorBlockIndex,
-      anchorWordIndex: img.anchorWordIndex,
-      anchorWord: img.anchorWord,
-      polygon: img.polygon,
-      resolvedY: hasAnchor ? null : (img.y !== undefined ? img.y * scale : 0),
-      absoluteY: img.y !== undefined ? img.y * scale : undefined,
-      url: img.url,
-      alt: img.alt,
-      filename: img.filename,
-      float: img.float,
-    }
-  })
+  return images.map((img, i) => ({
+    index: i,
+    x: img.x * scale,
+    y: img.y * scale,
+    width: img.width * imgScale,
+    aspectRatio: img.aspectRatio,
+    polygon: img.polygon,
+    url: img.url,
+    alt: img.alt,
+    filename: img.filename,
+  }))
 }
 
 interface PretextEngine {
@@ -171,125 +158,30 @@ interface PretextEngine {
   layoutNextLine: (prepared: any, cursor: any, maxWidth: number) => any
 }
 
-// Single-column layout pass — used both standalone and as first pass for multi-column
-function layoutSingleColumn(
+// Text-only probe to estimate total height (ignores images)
+function probeTextHeight(
   blocks: Block[],
-  imgData: ImageData[],
   containerWidth: number,
   engine: PretextEngine,
   cfg: Required<LayoutConfig>,
-  measureDropCap?: (char: string, font: string) => { width: number; height: number },
-): { elements: LayoutElement[]; totalHeight: number } {
-  const elements: LayoutElement[] = []
+): number {
   let y = 0
-  let isFirstParagraph = true
-
-  for (let bi = 0; bi < blocks.length; bi++) {
-    const block = blocks[bi]
+  for (const block of blocks) {
     const isHeading = block.type === 'heading'
     const font = isHeading ? cfg.headingFont : cfg.bodyFont
     const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
-    const text = block.text
-
     if (isHeading) y += cfg.blockGap
-
-    // Pre-scan this block to find anchor positions
-    const prePrepared = engine.prepareWithSegments(text, font)
-    let preCursor = { segmentIndex: 0, graphemeIndex: 0 }
-    let preChars = 0
-    let preY = y
-
+    const prepared = engine.prepareWithSegments(block.text, font)
+    let cursor = { segmentIndex: 0, graphemeIndex: 0 }
     while (true) {
-      const preLine = engine.layoutNextLine(prePrepared, preCursor, containerWidth)
-      if (!preLine) break
-      const prevWords = countWordsInText(text, preChars)
-      preChars += preLine.text.length
-      const currWords = countWordsInText(text, preChars)
-
-      for (const img of imgData) {
-        if (img.resolvedY !== null) continue
-        if (img.anchorBlockIndex === bi && img.anchorWordIndex !== undefined && img.anchorWordIndex >= prevWords && img.anchorWordIndex < currWords) {
-          img.resolvedY = preY + lineHeight
-        }
-      }
-      preCursor = preLine.end
-      preY += lineHeight
-    }
-
-    // Drop cap
-    let dropCapWidth = 0
-    let dropCapHeight = 0
-    let dcTop = 0
-    if (cfg.dropCap && isFirstParagraph && !isHeading && text.length > 0 && measureDropCap) {
-      const dc = measureDropCap(text[0], cfg.dropCapFont)
-      dropCapWidth = dc.width + 5
-      dropCapHeight = dc.height * 0.75
-      dcTop = y - 2
-      isFirstParagraph = false
-
-      elements.push({
-        type: 'dropCap',
-        char: text[0],
-        x: 0,
-        y: y - 2,
-        font: cfg.dropCapFont,
-      })
-
-      const prepared = engine.prepareWithSegments(text.slice(1), font)
-      let cursor = { segmentIndex: 0, graphemeIndex: 0 }
-      let textDone = false
-      while (!textDone) {
-        let slots = getSlots(imgData, y, containerWidth, cfg.imgPadding)
-        if (y < dcTop + dropCapHeight && slots.length > 0 && slots[0].left < dropCapWidth) {
-          slots[0] = { left: dropCapWidth, right: slots[0].right }
-          if (slots[0].right - slots[0].left < 30) slots.shift()
-        }
-        if (slots.length === 0) { y += lineHeight; continue }
-        let renderedOnLine = false
-        for (const slot of slots) {
-          const line = engine.layoutNextLine(prepared, cursor, slot.right - slot.left)
-          if (!line) { textDone = true; break }
-          elements.push({ type: 'text', text: line.text, x: slot.left, y, font, blockIndex: bi })
-          cursor = line.end
-          renderedOnLine = true
-        }
-        if (renderedOnLine) y += lineHeight
-      }
-    } else {
-      if (!isHeading) isFirstParagraph = false
-      const prepared = engine.prepareWithSegments(text, font)
-      let cursor = { segmentIndex: 0, graphemeIndex: 0 }
-      let blockWordCount = 0
-      let textDone = false
-
-      while (!textDone) {
-        const slots = getSlots(imgData, y, containerWidth, cfg.imgPadding)
-        if (slots.length === 0) { y += lineHeight; continue }
-        let renderedOnLine = false
-        for (const slot of slots) {
-          const line = engine.layoutNextLine(prepared, cursor, slot.right - slot.left)
-          if (!line) { textDone = true; break }
-          const words = line.text.trim().split(/\s+/).filter((w: string) => w.length > 0)
-          elements.push({
-            type: 'text',
-            text: line.text,
-            x: slot.left,
-            y,
-            font,
-            blockIndex: bi,
-            wordIndex: blockWordCount,
-          })
-          blockWordCount += words.length
-          cursor = line.end
-          renderedOnLine = true
-        }
-        if (renderedOnLine) y += lineHeight
-      }
+      const line = engine.layoutNextLine(prepared, cursor, containerWidth)
+      if (!line) break
+      y += lineHeight
+      cursor = line.end
     }
     y += cfg.blockGap
   }
-
-  return { elements, totalHeight: y }
+  return y
 }
 
 export function layoutBlocks(
@@ -298,7 +190,7 @@ export function layoutBlocks(
   containerWidth: number,
   engine: PretextEngine,
   config: LayoutConfig = {},
-  measureDropCap?: (char: string, font: string) => { width: number; height: number },
+  _measureDropCap?: (char: string, font: string) => { width: number; height: number },
 ): LayoutResult {
   const cfg = { ...DEFAULT_CONFIG, ...config }
 
@@ -313,51 +205,24 @@ export function layoutBlocks(
     ? (containerWidth - (numColumns - 1) * columnGap) / numColumns
     : containerWidth
 
-  // Pass 1: Single column layout with column width to resolve anchors and estimate height
-  // Clone imgData so we don't mutate the input (resolvedY gets reset)
-  const probeImgData = imgData.map(img => ({ ...img, resolvedY: img.absoluteY !== undefined ? img.absoluteY : null }))
-  const probe = layoutSingleColumn(blocks, probeImgData, columnWidth, engine, cfg, measureDropCap)
+  // Estimate column height from text-only probe
+  const textHeight = probeTextHeight(blocks, columnWidth, engine, cfg)
+  const columnHeight = numColumns > 1 ? Math.ceil(textHeight / numColumns) : textHeight
 
-  // Copy resolved anchor Ys back to original imgData
-  for (let i = 0; i < imgData.length; i++) {
-    if (imgData[i].absoluteY === undefined) {
-      imgData[i].resolvedY = probeImgData[i].resolvedY
-    } else {
-      imgData[i].resolvedY = imgData[i].absoluteY!
-    }
-  }
-
-  // Single column — use probe result directly
-  if (numColumns <= 1) {
-    const elements = [...probe.elements]
-    for (const img of imgData) {
-      if (img.resolvedY === null) continue
-      elements.push({
-        type: 'image',
-        x: img.x,
-        y: img.resolvedY,
-        width: img.width,
-        imageIndex: img.index,
-        url: img.url,
-        alt: img.alt,
-        polygon: img.polygon,
-      })
-    }
-    return { elements, totalHeight: probe.totalHeight }
-  }
-
-  // Multi-column: render column by column, streaming text between columns
-  const columnHeight = Math.ceil(probe.totalHeight / numColumns)
-
-  // Assign each image to a column based on its resolved y, with column-relative y
-  const columnImages: ImageData[][] = Array.from({ length: numColumns }, () => [])
+  // For each column, collect images that overlap with the column's x range
+  // An image can be in multiple columns if it spans them
+  const columnImageData: ImageData[][] = Array.from({ length: numColumns }, () => [])
   for (const img of imgData) {
-    if (img.resolvedY === null) continue
-    const col = Math.max(0, Math.min(numColumns - 1, Math.floor(img.resolvedY / columnHeight)))
-    const colRelY = img.resolvedY - col * columnHeight
-    columnImages[col].push({ ...img, resolvedY: colRelY })
+    for (let col = 0; col < numColumns; col++) {
+      const colStart = col * (columnWidth + columnGap)
+      const colEnd = colStart + columnWidth
+      if (img.x + img.width > colStart && img.x < colEnd) {
+        columnImageData[col].push({ ...img, x: img.x - colStart })
+      }
+    }
   }
 
+  // Render text column by column with per-column images
   const elements: LayoutElement[] = []
   let currentBlockIdx = 0
   let currentCursor: any = null
@@ -366,7 +231,7 @@ export function layoutBlocks(
   columnLoop:
   for (let c = 0; c < numColumns; c++) {
     const colX = c * (columnWidth + columnGap)
-    const colImgs = columnImages[c]
+    const colImgs = columnImageData[c]
     let y = 0
 
     while (currentBlockIdx < blocks.length) {
@@ -375,7 +240,6 @@ export function layoutBlocks(
       const font = isHeading ? cfg.headingFont : cfg.bodyFont
       const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
 
-      // Heading gap only at block start
       if (isHeading && currentCursor === null) y += cfg.blockGap
 
       const prepared = engine.prepareWithSegments(block.text, font)
@@ -383,8 +247,7 @@ export function layoutBlocks(
       let blockDone = false
 
       while (!blockDone) {
-        // Check column overflow
-        if (y >= columnHeight && c < numColumns - 1) {
+        if (numColumns > 1 && y >= columnHeight && c < numColumns - 1) {
           currentCursor = cursor
           continue columnLoop
         }
@@ -411,31 +274,26 @@ export function layoutBlocks(
         if (renderedOnLine) y += lineHeight
       }
 
-      // Block done, advance
       currentBlockIdx++
       currentCursor = null
       blockWordCount = 0
       y += cfg.blockGap
     }
-    break // All blocks rendered
+    break
   }
 
-  // Add image elements with column offsets
-  for (let c = 0; c < numColumns; c++) {
-    const colX = c * (columnWidth + columnGap)
-    for (const img of columnImages[c]) {
-      if (img.resolvedY === null) continue
-      elements.push({
-        type: 'image',
-        x: img.x + colX,
-        y: img.resolvedY,
-        width: img.width,
-        imageIndex: img.index,
-        url: img.url,
-        alt: img.alt,
-        polygon: img.polygon,
-      })
-    }
+  // Add image elements at their absolute positions
+  for (const img of imgData) {
+    elements.push({
+      type: 'image',
+      x: img.x,
+      y: img.y,
+      width: img.width,
+      imageIndex: img.index,
+      url: img.url,
+      alt: img.alt,
+      polygon: img.polygon,
+    })
   }
 
   return { elements, totalHeight: columnHeight }

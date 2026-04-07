@@ -9,14 +9,9 @@ export interface LayoutImage {
   alt: string
   url: string
   aspectRatio: number
-  // Optional anchor - if set, image y follows the anchored word. Otherwise uses absolute y.
-  anchorBlockIndex?: number
-  anchorWordIndex?: number
-  anchorWord?: string
   x: number
-  y?: number  // Absolute y position (used when not anchored)
+  y: number
   width: number
-  float?: 'left' | 'right'
   polygon?: PolygonPoint[]
 }
 
