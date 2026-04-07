@@ -72,6 +72,7 @@ export default function Editor({
   const [drawingPolygonIndex, setDrawingPolygonIndex] = useState<number | null>(null)
   const [activeModes, setActiveModes] = useState<Set<EditorMode>>(new Set(['layout']))
   const [mobileWidth, setMobileWidth] = useState(375)
+  const [mobileResizing, setMobileResizing] = useState(false)
   const mobileResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   const toggleMode = (m: EditorMode, shift: boolean) => {
@@ -367,6 +368,7 @@ export default function Editor({
   // Mobile preview resize handlers
   const handleMobileResizeDown = useCallback((e: React.MouseEvent) => {
     mobileResizeRef.current = { startX: e.clientX, startWidth: mobileWidth }
+    setMobileResizing(true)
     e.preventDefault()
 
     const handleMove = (ev: MouseEvent) => {
@@ -376,6 +378,7 @@ export default function Editor({
     }
     const handleUp = () => {
       mobileResizeRef.current = null
+      setMobileResizing(false)
       window.removeEventListener('mousemove', handleMove)
       window.removeEventListener('mouseup', handleUp)
     }
@@ -587,7 +590,7 @@ export default function Editor({
       width: expandable
         ? `calc(${typeof width === 'number' ? width + 'px' : width || '100%'} * ${activeModes.has('mobile') ? activeModes.size - 1 : activeModes.size}${activeModes.has('mobile') ? ` + ${mobileWidth + 42}px` : ''})`
         : width,
-      transition: 'width 0.2s ease',
+      transition: mobileResizing ? 'none' : 'width 0.2s ease',
     }}>
       {/* Toolbar */}
       <div style={{
@@ -753,26 +756,23 @@ export default function Editor({
                 <Renderer blocks={blocks} layout={layoutData} config={config} resolveImageUrl={resolveImageUrl} />
               </div>
             </div>
-            {/* Resize handle */}
+            {/* Resize bar (right side, full height) */}
             <div
               onMouseDown={handleMobileResizeDown}
               style={{
                 position: 'absolute',
-                bottom: 0,
+                top: 0,
                 right: 0,
-                width: 20,
-                height: 20,
-                cursor: 'nwse-resize',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#aaa',
-                fontSize: 10,
+                width: 6,
+                height: '100%',
+                cursor: 'ew-resize',
+                background: mobileResizing ? '#502581' : 'transparent',
+                transition: 'background 0.15s',
                 userSelect: 'none',
               }}
-            >
-              ◢
-            </div>
+              onMouseEnter={(e) => { if (!mobileResizing) (e.target as HTMLElement).style.background = 'rgba(80,37,129,0.3)' }}
+              onMouseLeave={(e) => { if (!mobileResizing) (e.target as HTMLElement).style.background = 'transparent' }}
+            />
           </div>
         )}
       </div>
