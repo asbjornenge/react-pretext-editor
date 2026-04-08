@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { Pen, LayoutGrid, Eye, Smartphone, Columns2 } from 'lucide-react'
+import { Pen, LayoutGrid, Eye, Smartphone, Columns2, Plus, X } from 'lucide-react'
 import LayoutView from './LayoutView'
 import Renderer from './Renderer'
-import type { Block, LayoutData, LayoutImage, LayoutConfig } from '../types'
+import type { Block, LayoutData, LayoutImage, LayoutBreakpoint, LayoutConfig } from '../types'
 
 type EditorMode = 'write' | 'layout' | 'mobile'
 
@@ -70,6 +70,7 @@ export default function Editor({
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
   const [drawingPolygonIndex, setDrawingPolygonIndex] = useState<number | null>(null)
   const [previewMode, setPreviewMode] = useState(false)
+  const [editingBreakpoint, setEditingBreakpoint] = useState<number>(-1) // -1 = default, else index into breakpoints
   const [activeModes, setActiveModes] = useState<Set<EditorMode>>(new Set(['layout']))
   const [mobileWidth, setMobileWidth] = useState(375)
   const [mobileResizing, setMobileResizing] = useState(false)
@@ -133,6 +134,56 @@ export default function Editor({
   const cfg = { ...DEFAULT_CONFIG, ...config }
   const layoutData: LayoutData = layout || { images: [] }
 
+  // Helpers to read/write the currently editing breakpoint's data
+  const activeImages: LayoutImage[] = editingBreakpoint === -1
+    ? layoutData.images
+    : (layoutData.breakpoints?.[editingBreakpoint]?.images || [])
+  const activeColumns = editingBreakpoint === -1
+    ? layoutData.columns
+    : layoutData.breakpoints?.[editingBreakpoint]?.columns
+
+  // Update images for the active breakpoint
+  const updateActiveImages = (newImages: LayoutImage[], extraLayout?: Partial<LayoutData>) => {
+    if (editingBreakpoint === -1) {
+      onLayoutChange({ ...layoutData, images: newImages, ...extraLayout })
+    } else {
+      const newBps = [...(layoutData.breakpoints || [])]
+      newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], images: newImages }
+      onLayoutChange({ ...layoutData, breakpoints: newBps })
+    }
+  }
+
+  const updateActiveColumns = (n: number) => {
+    if (editingBreakpoint === -1) {
+      onLayoutChange({ ...layoutData, columns: n })
+    } else {
+      const newBps = [...(layoutData.breakpoints || [])]
+      newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], columns: n }
+      onLayoutChange({ ...layoutData, breakpoints: newBps })
+    }
+  }
+
+  // Add a new breakpoint (clones current default)
+  const addBreakpoint = (maxWidth: number, name: string) => {
+    const newBp: LayoutBreakpoint = {
+      maxWidth,
+      name,
+      images: layoutData.images.map(img => ({ ...img })),
+      columns: layoutData.columns,
+      editorWidth: maxWidth,
+    }
+    const newBps = [...(layoutData.breakpoints || []), newBp]
+    onLayoutChange({ ...layoutData, breakpoints: newBps })
+    setEditingBreakpoint(newBps.length - 1)
+  }
+
+  const removeBreakpoint = (idx: number) => {
+    const newBps = (layoutData.breakpoints || []).filter((_, i) => i !== idx)
+    onLayoutChange({ ...layoutData, breakpoints: newBps })
+    if (editingBreakpoint === idx) setEditingBreakpoint(-1)
+    else if (editingBreakpoint > idx) setEditingBreakpoint(editingBreakpoint - 1)
+  }
+
   const resolveUrl = (url: string, filename: string) => {
     if (resolveImageUrl) return resolveImageUrl(url, filename)
     return url
@@ -189,7 +240,7 @@ export default function Editor({
         const rect = imgEl.getBoundingClientRect()
         const rx = (e.clientX - rect.left) / rect.width
         const ry = (e.clientY - rect.top) / rect.height
-        const poly = layoutData.images[drawingPolygonIndex].polygon || []
+        const poly = activeImages[drawingPolygonIndex].polygon || []
         const threshold = 0.04
         let closestIdx = -1
         let closestDist = Infinity
@@ -219,8 +270,8 @@ export default function Editor({
       imageIndex: index,
       startX: e.clientX,
       startY: e.clientY,
-      origX: layoutData.images[index].x,
-      origImgY: parseFloat(imgEl.style.top) || layoutData.images[index].y,
+      origX: activeImages[index].x,
+      origImgY: parseFloat(imgEl.style.top) || activeImages[index].y,
       active: false,
     }
     setSelectedImageIndex(index)
@@ -230,7 +281,7 @@ export default function Editor({
 
   // Called from LayoutView when a resize handle is mousedowned
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, index: number) => {
-    resizeRef.current = { imageIndex: index, startX: e.clientX, origWidth: layoutData.images[index].width }
+    resizeRef.current = { imageIndex: index, startX: e.clientX, origWidth: activeImages[index].width }
     e.preventDefault()
     e.stopPropagation()
   }, [layoutData])
@@ -248,40 +299,39 @@ export default function Editor({
       const newX = drag.origX + dx
       const newY = Math.max(0, drag.origImgY + dy)
 
-      const newImages = [...layoutData.images]
+      const newImages = [...activeImages]
       newImages[drag.imageIndex] = {
         ...newImages[drag.imageIndex],
         x: newX,
         y: newY,
       }
-      onLayoutChange({ ...layoutData, images: newImages, editorWidth: layoutWidth })
+      updateActiveImages(newImages, { editorWidth: layoutWidth })
     }
 
     if (resizeRef.current) {
       const r = resizeRef.current
       const dx = e.clientX - r.startX
       const layoutWidth = layoutViewRef.current?.offsetWidth || 700
-      const newImages = [...layoutData.images]
+      const newImages = [...activeImages]
       newImages[r.imageIndex] = { ...newImages[r.imageIndex], width: Math.max(50, r.origWidth + dx) }
-      onLayoutChange({ ...layoutData, images: newImages, editorWidth: layoutWidth })
+      updateActiveImages(newImages, { editorWidth: layoutWidth })
     }
 
     if (polyDragRef.current) {
       const pd = polyDragRef.current
       const dx = e.clientX - pd.startX
       const dy = e.clientY - pd.startY
-      // Require 5px movement before starting drag (prevent accidental moves on click)
       if (!pd.active && Math.abs(dx) + Math.abs(dy) < 5) return
       pd.active = true
       const rx = Math.max(0, Math.min(1, (e.clientX - pd.imgRect.left) / pd.imgRect.width))
       const ry = Math.max(0, Math.min(1, (e.clientY - pd.imgRect.top) / pd.imgRect.height))
-      const newImages = [...layoutData.images]
+      const newImages = [...activeImages]
       const poly = [...(newImages[pd.imageIndex].polygon || [])]
       poly[pd.pointIndex] = { x: rx, y: ry }
       newImages[pd.imageIndex] = { ...newImages[pd.imageIndex], polygon: poly }
-      onLayoutChange({ ...layoutData, images: newImages })
+      updateActiveImages(newImages)
     }
-  }, [layoutData, onLayoutChange])
+  }, [layoutData, onLayoutChange, activeImages, editingBreakpoint])
 
   const handleMouseUp = useCallback(() => {
     if (dragRef.current) dragRef.current = null
@@ -304,13 +354,13 @@ export default function Editor({
       const rx = (e.clientX - rect.left) / rect.width
       const ry = (e.clientY - rect.top) / rect.height
       if (rx >= -0.1 && rx <= 1.1 && ry >= -0.1 && ry <= 1.1) {
-        const newImages = [...layoutData.images]
+        const newImages = [...activeImages]
         const poly = newImages[drawingPolygonIndex].polygon || []
         newImages[drawingPolygonIndex] = {
           ...newImages[drawingPolygonIndex],
           polygon: [...poly, { x: Math.max(0, Math.min(1, rx)), y: Math.max(0, Math.min(1, ry)) }],
         }
-        onLayoutChange({ ...layoutData, images: newImages })
+        updateActiveImages(newImages)
       }
       return
     }
@@ -324,19 +374,18 @@ export default function Editor({
 
   // Image actions
   const handleRemoveImage = (index: number) => {
-    const newImages = layoutData.images.filter((_, i) => i !== index)
-    onLayoutChange({ ...layoutData, images: newImages })
+    const newImages = activeImages.filter((_, i) => i !== index)
+    updateActiveImages(newImages)
     setSelectedImageIndex(null)
   }
 
   const handleToggleFloat = (index: number) => {
     const layoutWidth = (layoutPanelRef.current?.offsetWidth || 700) - 40
-    const newImages = [...layoutData.images]
+    const newImages = [...activeImages]
     const img = newImages[index]
-    // Toggle between left (x=0) and right (x=layoutWidth-width)
     const isRight = img.x > layoutWidth / 2
     newImages[index] = { ...img, x: isRight ? 0 : layoutWidth - img.width }
-    onLayoutChange({ ...layoutData, images: newImages, editorWidth: layoutWidth })
+    updateActiveImages(newImages, { editorWidth: layoutWidth })
   }
 
   // Floating menu position — based on rendered image element
@@ -351,7 +400,7 @@ export default function Editor({
   }
 
   const menuPos = getMenuPos()
-  const selImg = selectedImageIndex !== null ? layoutData.images[selectedImageIndex] : null
+  const selImg = selectedImageIndex !== null ? activeImages[selectedImageIndex] : null
 
   const modes: { key: EditorMode; label: string; icon: React.ReactNode }[] = [
     { key: 'write', label: 'Write', icon: <Pen size={14} /> },
@@ -395,13 +444,13 @@ export default function Editor({
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Columns2 size={14} color="#6a4c93" />
             {[1, 2, 3].map(n => (
-              <button key={n} type="button" onClick={() => onLayoutChange({ ...layoutData, columns: n })}
+              <button key={n} type="button" onClick={() => updateActiveColumns(n)}
                 style={{
                   padding: '3px 8px', fontSize: 12, cursor: 'pointer',
-                  background: (layoutData.columns || 1) === n ? '#502581' : 'transparent',
-                  color: (layoutData.columns || 1) === n ? 'white' : '#6a4c93',
+                  background: (activeColumns || 1) === n ? '#502581' : 'transparent',
+                  color: (activeColumns || 1) === n ? 'white' : '#6a4c93',
                   border: 'none', borderRadius: 3,
-                  fontWeight: (layoutData.columns || 1) === n ? 600 : 400,
+                  fontWeight: (activeColumns || 1) === n ? 600 : 400,
                 }}>
                 {n}
               </button>
@@ -460,11 +509,87 @@ export default function Editor({
 
         {/* Layout panel */}
         {activeModes.has('layout') && (
-          <div ref={layoutPanelRef} style={{ flex: 1, overflow: 'auto', position: 'relative', borderRight: activeModes.has('mobile') ? '1px solid #ddd' : 'none', padding: 20 }}>
+          <div ref={layoutPanelRef} style={{ flex: 1, overflow: 'auto', position: 'relative', borderRight: activeModes.has('mobile') ? '1px solid #ddd' : 'none' }}>
+            {/* Breakpoint tabs */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '6px 10px',
+              background: '#f5f0fa', borderBottom: '1px solid #ddd',
+              fontSize: 11,
+            }}>
+              <button type="button"
+                onClick={() => setEditingBreakpoint(-1)}
+                style={{
+                  padding: '3px 10px', cursor: 'pointer', fontSize: 11,
+                  background: editingBreakpoint === -1 ? '#502581' : 'transparent',
+                  color: editingBreakpoint === -1 ? 'white' : '#6a4c93',
+                  border: '1px solid #d4c5e8', borderRadius: 3,
+                  fontWeight: editingBreakpoint === -1 ? 600 : 400,
+                }}>
+                Default
+              </button>
+              {(layoutData.breakpoints || []).map((bp, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center' }}>
+                  <button type="button"
+                    onClick={() => setEditingBreakpoint(idx)}
+                    style={{
+                      padding: '3px 10px', cursor: 'pointer', fontSize: 11,
+                      background: editingBreakpoint === idx ? '#502581' : 'transparent',
+                      color: editingBreakpoint === idx ? 'white' : '#6a4c93',
+                      border: '1px solid #d4c5e8', borderRadius: '3px 0 0 3px',
+                      borderRight: 'none',
+                      fontWeight: editingBreakpoint === idx ? 600 : 400,
+                    }}>
+                    {bp.name || `≤${bp.maxWidth}px`}
+                  </button>
+                  <button type="button"
+                    title="Remove breakpoint"
+                    onClick={(e) => { e.stopPropagation(); removeBreakpoint(idx) }}
+                    style={{
+                      padding: '3px 5px', cursor: 'pointer', fontSize: 11,
+                      background: editingBreakpoint === idx ? '#502581' : 'transparent',
+                      color: editingBreakpoint === idx ? 'white' : '#6a4c93',
+                      border: '1px solid #d4c5e8', borderRadius: '0 3px 3px 0',
+                      display: 'flex', alignItems: 'center',
+                    }}>
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+              <button type="button" title="Add breakpoint"
+                onClick={() => {
+                  // Quick options: Mobile (375), Tablet (768), or custom
+                  const choice = window.prompt('Add breakpoint — enter max width in px (e.g. 375 for mobile, 768 for tablet):', '768')
+                  if (!choice) return
+                  const w = parseInt(choice)
+                  if (isNaN(w) || w < 200) return
+                  const name = w <= 480 ? 'Mobile' : w <= 1024 ? 'Tablet' : `≤${w}px`
+                  addBreakpoint(w, name)
+                }}
+                style={{
+                  padding: '3px 6px', cursor: 'pointer',
+                  background: 'transparent', color: '#6a4c93',
+                  border: '1px dashed #6a4c93', borderRadius: 3,
+                  display: 'flex', alignItems: 'center',
+                }}>
+                <Plus size={12} />
+              </button>
+            </div>
+
+            {/* Layout viewport — constrained to breakpoint width when editing one */}
+            <div style={{
+              padding: 20,
+              display: 'flex',
+              justifyContent: 'center',
+            }}>
+              <div style={{
+                width: editingBreakpoint === -1 ? '100%' : (layoutData.breakpoints?.[editingBreakpoint]?.maxWidth || '100%'),
+                maxWidth: '100%',
+              }}>
             <LayoutView
               containerRef={layoutViewRef}
               blocks={blocks}
-              layout={layoutData}
+              layout={editingBreakpoint === -1 ? { ...layoutData, breakpoints: undefined } : { images: activeImages, columns: activeColumns, editorWidth: layoutData.breakpoints?.[editingBreakpoint]?.editorWidth }}
               config={config}
               resolveImageUrl={resolveImageUrl}
               editorMode={previewMode ? undefined : {
@@ -479,6 +604,8 @@ export default function Editor({
                 onMouseLeave: handleMouseUp,
               }}
             />
+              </div>
+            </div>
 
             {/* Floating image menu */}
             {selectedImageIndex !== null && menuPos && selImg && (
@@ -496,8 +623,8 @@ export default function Editor({
               }},
               ...(drawingPolygonIndex === selectedImageIndex && selImg.polygon?.length ? [{
                 label: 'Reset', title: 'Reset polygon', fn: () => {
-                  const ni = [...layoutData.images]; ni[selectedImageIndex] = { ...ni[selectedImageIndex], polygon: [] }
-                  onLayoutChange({ ...layoutData, images: ni })
+                  const ni = [...activeImages]; ni[selectedImageIndex] = { ...ni[selectedImageIndex], polygon: [] }
+                  updateActiveImages(ni)
                 }
               }] : []),
               { label: '×', title: 'Remove', fn: () => handleRemoveImage(selectedImageIndex) },

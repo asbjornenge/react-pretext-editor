@@ -15,10 +15,21 @@ export interface LayoutImage {
   polygon?: PolygonPoint[]
 }
 
+export interface LayoutBreakpoint {
+  maxWidth: number  // Apply when container width <= maxWidth
+  name?: string
+  images: LayoutImage[]
+  columns?: number
+  editorWidth?: number
+}
+
 export interface LayoutData {
+  // Default (largest) layout
   images: LayoutImage[]
   editorWidth?: number
   columns?: number
+  // Optional smaller breakpoint overrides
+  breakpoints?: LayoutBreakpoint[]
 }
 
 export interface Block {

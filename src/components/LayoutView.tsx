@@ -1,8 +1,29 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { usePretextEngine } from '../engine/pretext-loader'
 import { layoutBlocks, prepareImageData } from '../engine/layout'
-import type { Block, LayoutData, LayoutConfig, PolygonPoint } from '../types'
+import type { Block, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
 import type { LayoutElement } from '../engine/layout'
+
+// Resolve which breakpoint applies for a given container width
+export function resolveBreakpoint(layout: LayoutData, containerWidth: number): {
+  images: LayoutImage[]
+  columns?: number
+  editorWidth?: number
+  breakpointIndex: number  // -1 = default
+} {
+  if (layout.breakpoints && layout.breakpoints.length > 0) {
+    // Sort by maxWidth ascending so we pick the smallest matching
+    const sorted = [...layout.breakpoints]
+      .map((bp, idx) => ({ bp, idx }))
+      .sort((a, b) => a.bp.maxWidth - b.bp.maxWidth)
+    for (const { bp, idx } of sorted) {
+      if (containerWidth <= bp.maxWidth) {
+        return { images: bp.images, columns: bp.columns, editorWidth: bp.editorWidth, breakpointIndex: idx }
+      }
+    }
+  }
+  return { images: layout.images, columns: layout.columns, editorWidth: layout.editorWidth, breakpointIndex: -1 }
+}
 
 export interface EditorMode {
   selectedImageIndex: number | null
@@ -40,7 +61,7 @@ export default function LayoutView({
   const engine = usePretextEngine()
   const internalContainerRef = useRef<HTMLDivElement>(null)
   const containerRef = externalContainerRef || internalContainerRef
-  const [result, setResult] = useState<{ elements: LayoutElement[]; totalHeight: number } | null>(null)
+  const [result, setResult] = useState<{ elements: LayoutElement[]; totalHeight: number; activeImages: LayoutImage[] } | null>(null)
   const [fontsReady, setFontsReady] = useState(false)
 
   useEffect(() => {
@@ -51,14 +72,15 @@ export default function LayoutView({
     if (!engine || !containerRef.current || blocks.length === 0) return
 
     const containerWidth = containerRef.current.offsetWidth
-    const editorWidth = layout.editorWidth || 700
+    const bp = resolveBreakpoint(layout, containerWidth)
+    const editorWidth = bp.editorWidth || 700
     const scale = containerWidth / editorWidth
-    const imgData = prepareImageData(layout.images || [], scale, containerWidth)
+    const imgData = prepareImageData(bp.images || [], scale, containerWidth)
 
-    const cfg = { dropCap: false, ...config, columns: layout.columns || config?.columns || 1 }
+    const cfg = { dropCap: false, ...config, columns: bp.columns || config?.columns || 1 }
 
     const layoutResult = layoutBlocks(blocks, imgData, containerWidth, engine, cfg)
-    setResult(layoutResult)
+    setResult({ ...layoutResult, activeImages: bp.images || [] })
   }, [engine, blocks, layout, config, fontsReady])
 
   useEffect(() => {
@@ -126,7 +148,7 @@ export default function LayoutView({
             }
             if (el.type === 'image') {
               const imageIndex = el.imageIndex!
-              const imgInfo = layout.images[imageIndex]
+              const imgInfo = result.activeImages[imageIndex]
               const src = imgInfo ? resolveUrl(imgInfo.url, imgInfo.filename) : el.url!
               const isSelected = isEditor && editorMode!.selectedImageIndex === imageIndex
               const isDrawingPoly = isEditor && editorMode!.drawingPolygonIndex === imageIndex
@@ -168,7 +190,7 @@ export default function LayoutView({
             const poly = el.polygon || []
             const isSelected = editorMode!.selectedImageIndex === imageIndex
             const isDrawing = editorMode!.drawingPolygonIndex === imageIndex
-            const imgH = el.width! * ((layout.images[imageIndex]?.aspectRatio) || 1.2)
+            const imgH = el.width! * ((result.activeImages[imageIndex]?.aspectRatio) || 1.2)
 
             return (
               <React.Fragment key={`editor-${i}`}>
