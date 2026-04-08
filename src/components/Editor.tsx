@@ -4,7 +4,7 @@ import LayoutView from './LayoutView'
 import Renderer from './Renderer'
 import type { Block, LayoutData, LayoutImage, LayoutConfig } from '../types'
 
-type EditorMode = 'write' | 'layout' | 'preview' | 'mobile'
+type EditorMode = 'write' | 'layout' | 'mobile'
 
 interface EditorProps {
   blocks: Block[]
@@ -69,6 +69,7 @@ export default function Editor({
 
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
   const [drawingPolygonIndex, setDrawingPolygonIndex] = useState<number | null>(null)
+  const [previewMode, setPreviewMode] = useState(false)
   const [activeModes, setActiveModes] = useState<Set<EditorMode>>(new Set(['layout']))
   const [mobileWidth, setMobileWidth] = useState(375)
   const [mobileResizing, setMobileResizing] = useState(false)
@@ -355,7 +356,6 @@ export default function Editor({
   const modes: { key: EditorMode; label: string; icon: React.ReactNode }[] = [
     { key: 'write', label: 'Write', icon: <Pen size={14} /> },
     { key: 'layout', label: 'Layout', icon: <LayoutGrid size={14} /> },
-    { key: 'preview', label: 'Preview', icon: <Eye size={14} /> },
     { key: 'mobile', label: activeModes.has('mobile') ? `${mobileWidth}px` : '', icon: <Smartphone size={14} /> },
   ]
 
@@ -389,21 +389,38 @@ export default function Editor({
             {m.label}
           </button>
         ))}
-        {/* Column controls */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Columns2 size={14} color="#6a4c93" />
-          {[1, 2, 3].map(n => (
-            <button key={n} type="button" onClick={() => onLayoutChange({ ...layoutData, columns: n })}
-              style={{
-                padding: '3px 8px', fontSize: 12, cursor: 'pointer',
-                background: (layoutData.columns || 1) === n ? '#502581' : 'transparent',
-                color: (layoutData.columns || 1) === n ? 'white' : '#6a4c93',
-                border: 'none', borderRadius: 3,
-                fontWeight: (layoutData.columns || 1) === n ? 600 : 400,
-              }}>
-              {n}
-            </button>
-          ))}
+        {/* Right-side controls */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Column controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Columns2 size={14} color="#6a4c93" />
+            {[1, 2, 3].map(n => (
+              <button key={n} type="button" onClick={() => onLayoutChange({ ...layoutData, columns: n })}
+                style={{
+                  padding: '3px 8px', fontSize: 12, cursor: 'pointer',
+                  background: (layoutData.columns || 1) === n ? '#502581' : 'transparent',
+                  color: (layoutData.columns || 1) === n ? 'white' : '#6a4c93',
+                  border: 'none', borderRadius: 3,
+                  fontWeight: (layoutData.columns || 1) === n ? 600 : 400,
+                }}>
+                {n}
+              </button>
+            ))}
+          </div>
+          {/* Preview toggle */}
+          <button type="button" title="Preview mode (hide editor chrome)"
+            onClick={() => setPreviewMode(p => !p)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+              background: previewMode ? '#502581' : 'transparent',
+              color: previewMode ? 'white' : '#6a4c93',
+              border: 'none', borderRadius: 3,
+              fontWeight: previewMode ? 600 : 400,
+            }}>
+            <Eye size={14} />
+            Preview
+          </button>
         </div>
       </div>
 
@@ -443,14 +460,14 @@ export default function Editor({
 
         {/* Layout panel */}
         {activeModes.has('layout') && (
-          <div ref={layoutPanelRef} style={{ flex: 1, overflow: 'auto', position: 'relative', borderRight: activeModes.has('preview') ? '1px solid #ddd' : 'none', padding: 20 }}>
+          <div ref={layoutPanelRef} style={{ flex: 1, overflow: 'auto', position: 'relative', borderRight: activeModes.has('mobile') ? '1px solid #ddd' : 'none', padding: 20 }}>
             <LayoutView
               containerRef={layoutViewRef}
               blocks={blocks}
               layout={layoutData}
               config={config}
               resolveImageUrl={resolveImageUrl}
-              editorMode={{
+              editorMode={previewMode ? undefined : {
                 selectedImageIndex,
                 drawingPolygonIndex,
                 onImageMouseDown: handleImageMouseDown,
@@ -502,13 +519,6 @@ export default function Editor({
           </div>
         )}
 
-          </div>
-        )}
-
-        {/* Preview panel */}
-        {activeModes.has('preview') && (
-          <div style={{ flex: 1, overflow: 'auto', padding: 20, borderRight: activeModes.has('mobile') ? '1px solid #ddd' : 'none' }}>
-            <Renderer blocks={blocks} layout={layoutData} config={config} resolveImageUrl={resolveImageUrl} />
           </div>
         )}
 
