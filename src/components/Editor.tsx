@@ -571,7 +571,7 @@ export default function Editor({
             </div>
 
             {/* Floating image menu */}
-            {selectedImageIndex !== null && menuPos && selImg && (
+            {!previewMode && selectedImageIndex !== null && menuPos && selImg && (
           <div style={{
             position: 'absolute', top: menuPos.top, left: menuPos.left,
             transform: 'translateX(-50%)',
