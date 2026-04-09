@@ -350,14 +350,16 @@ export default function Editor({
     updateActiveImages(newImages, { editorWidth: layoutWidth })
   }
 
-  // Floating menu position — based on rendered image element
+  // Floating menu position — uses getBoundingClientRect for accurate positioning
   const getMenuPos = () => {
-    if (selectedImageIndex === null) return null
+    if (selectedImageIndex === null || !layoutPanelRef.current) return null
     const imgEl = findImageEl(selectedImageIndex)
     if (!imgEl) return null
+    const imgRect = imgEl.getBoundingClientRect()
+    const panelRect = layoutPanelRef.current.getBoundingClientRect()
     return {
-      top: parseFloat(imgEl.style.top) - 32,
-      left: parseFloat(imgEl.style.left) + parseFloat(imgEl.style.width) / 2 - 60,
+      top: imgRect.top - panelRect.top + layoutPanelRef.current.scrollTop - 37,
+      left: imgRect.left - panelRect.left + layoutPanelRef.current.scrollLeft + imgRect.width / 2,
     }
   }
 
@@ -572,12 +574,12 @@ export default function Editor({
             {selectedImageIndex !== null && menuPos && selImg && (
           <div style={{
             position: 'absolute', top: menuPos.top, left: menuPos.left,
+            transform: 'translateX(-50%)',
             display: 'flex', gap: 2, padding: '4px 6px',
             background: '#333', borderRadius: 4, zIndex: 150,
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           }}>
             {[
-              { label: '⇄', title: 'Toggle left/right', fn: () => handleToggleFloat(selectedImageIndex) },
               { label: selImg.polygon?.length ? `◇${selImg.polygon.length}` : '◇', title: 'Polygon', active: drawingPolygonIndex === selectedImageIndex, fn: () => {
                 if (drawingPolygonIndex === selectedImageIndex) setDrawingPolygonIndex(null)
                 else setDrawingPolygonIndex(selectedImageIndex)
