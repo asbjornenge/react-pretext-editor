@@ -227,6 +227,7 @@ export function layoutBlocks(
   let currentBlockIdx = 0
   let currentCursor: any = null
   let blockWordCount = 0
+  let maxColumnY = 0
 
   columnLoop:
   for (let c = 0; c < numColumns; c++) {
@@ -249,6 +250,7 @@ export function layoutBlocks(
       while (!blockDone) {
         if (numColumns > 1 && y >= columnHeight && c < numColumns - 1) {
           currentCursor = cursor
+          maxColumnY = Math.max(maxColumnY, y)
           continue columnLoop
         }
         const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding)
@@ -279,11 +281,15 @@ export function layoutBlocks(
       blockWordCount = 0
       y += cfg.blockGap
     }
+    maxColumnY = Math.max(maxColumnY, y)
     break
   }
 
   // Add image elements at their absolute positions
+  let actualHeight = maxColumnY
   for (const img of imgData) {
+    const imgH = img.width * (img.aspectRatio || 1.2)
+    actualHeight = Math.max(actualHeight, img.y + imgH)
     elements.push({
       type: 'image',
       x: img.x,
@@ -296,5 +302,5 @@ export function layoutBlocks(
     })
   }
 
-  return { elements, totalHeight: columnHeight }
+  return { elements, totalHeight: actualHeight }
 }

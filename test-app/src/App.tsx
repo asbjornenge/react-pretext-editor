@@ -19,7 +19,6 @@ export default function App() {
         onBlocksChange={setBlocks}
         images={exampleMedia}
         width={1000}
-        height={1000}
         expandable
       />
     </div>

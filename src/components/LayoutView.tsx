@@ -106,7 +106,7 @@ export default function LayoutView({
     <div
       ref={containerRef}
       className={className}
-      style={{ position: 'relative', ...style }}
+      style={{ position: 'relative', minHeight: '100%', ...style }}
       onMouseDown={editorMode?.onBackgroundMouseDown}
       onClick={editorMode?.onBackgroundClick}
       onMouseMove={editorMode?.onMouseMove}
