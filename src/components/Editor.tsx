@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { Pen, LayoutGrid, Eye, Smartphone, Columns2, Plus, X } from 'lucide-react'
+import { Pen, LayoutGrid, Eye, Columns2, Plus, X } from 'lucide-react'
 import LayoutView from './LayoutView'
-import Renderer from './Renderer'
 import type { Block, LayoutData, LayoutImage, LayoutBreakpoint, LayoutConfig } from '../types'
 
-type EditorMode = 'write' | 'layout' | 'mobile'
+type EditorMode = 'write' | 'layout'
 
 interface EditorProps {
   blocks: Block[]
@@ -72,9 +71,6 @@ export default function Editor({
   const [previewMode, setPreviewMode] = useState(false)
   const [editingBreakpoint, setEditingBreakpoint] = useState<number>(-1) // -1 = default, else index into breakpoints
   const [activeModes, setActiveModes] = useState<Set<EditorMode>>(new Set(['layout']))
-  const [mobileWidth, setMobileWidth] = useState(375)
-  const [mobileResizing, setMobileResizing] = useState(false)
-  const mobileResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   const toggleMode = (m: EditorMode, shift: boolean) => {
     if (shift) {
@@ -88,20 +84,7 @@ export default function Editor({
         return next
       })
     } else {
-      // For mobile, toggle it alongside current modes
-      if (m === 'mobile') {
-        setActiveModes(prev => {
-          const next = new Set(prev)
-          if (next.has('mobile')) {
-            next.delete('mobile')
-          } else {
-            next.add('mobile')
-          }
-          return next
-        })
-      } else {
-        setActiveModes(new Set([m]))
-      }
+      setActiveModes(new Set([m]))
     }
   }
 
@@ -195,27 +178,6 @@ export default function Editor({
       setMarkdownText(blocksToMarkdown(blocks))
     }
   }, [activeModes])
-
-  // Mobile preview resize handlers
-  const handleMobileResizeDown = useCallback((e: React.MouseEvent) => {
-    mobileResizeRef.current = { startX: e.clientX, startWidth: mobileWidth }
-    setMobileResizing(true)
-    e.preventDefault()
-
-    const handleMove = (ev: MouseEvent) => {
-      if (!mobileResizeRef.current) return
-      const dx = ev.clientX - mobileResizeRef.current.startX
-      setMobileWidth(Math.max(200, Math.min(800, mobileResizeRef.current.startWidth + dx)))
-    }
-    const handleUp = () => {
-      mobileResizeRef.current = null
-      setMobileResizing(false)
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleUp)
-    }
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleUp)
-  }, [mobileWidth])
 
   // Handle markdown text changes
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -405,16 +367,15 @@ export default function Editor({
   const modes: { key: EditorMode; label: string; icon: React.ReactNode }[] = [
     { key: 'write', label: 'Write', icon: <Pen size={14} /> },
     { key: 'layout', label: 'Layout', icon: <LayoutGrid size={14} /> },
-    { key: 'mobile', label: activeModes.has('mobile') ? `${mobileWidth}px` : '', icon: <Smartphone size={14} /> },
   ]
 
   return (
     <div style={{
       marginBottom: 20,
       width: expandable
-        ? `calc(${typeof width === 'number' ? width + 'px' : width || '100%'} * ${activeModes.has('mobile') ? activeModes.size - 1 : activeModes.size}${activeModes.has('mobile') ? ` + ${mobileWidth + 42}px` : ''})`
+        ? `calc(${typeof width === 'number' ? width + 'px' : width || '100%'} * ${activeModes.size})`
         : width,
-      transition: mobileResizing ? 'none' : 'width 0.2s ease',
+      transition: 'width 0.2s ease',
     }}>
       {/* Toolbar */}
       <div style={{
@@ -509,7 +470,7 @@ export default function Editor({
 
         {/* Layout panel */}
         {activeModes.has('layout') && (
-          <div ref={layoutPanelRef} style={{ flex: 1, overflow: 'auto', position: 'relative', borderRight: activeModes.has('mobile') ? '1px solid #ddd' : 'none' }}>
+          <div ref={layoutPanelRef} style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
             {/* Breakpoint tabs */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 4,
@@ -649,53 +610,6 @@ export default function Editor({
           </div>
         )}
 
-        {/* Mobile preview panel */}
-        {activeModes.has('mobile') && (
-          <div style={{
-            width: mobileWidth + 42,
-            minWidth: 242,
-            maxWidth: 842,
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            padding: '20px 20px 0 20px',
-            background: '#f5f5f5',
-            position: 'relative',
-            flexShrink: 0,
-          }}>
-            <div style={{
-              width: mobileWidth,
-              background: 'white',
-              borderRadius: 8,
-              border: '1px solid #ddd',
-              overflow: 'auto',
-              flex: 1,
-              boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-            }}>
-              <div style={{ padding: 12 }}>
-                <Renderer blocks={blocks} layout={layoutData} config={config} resolveImageUrl={resolveImageUrl} />
-              </div>
-            </div>
-            {/* Resize bar (right side, full height) */}
-            <div
-              onMouseDown={handleMobileResizeDown}
-              style={{
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                width: 6,
-                height: '100%',
-                cursor: 'ew-resize',
-                background: mobileResizing ? '#502581' : 'transparent',
-                transition: 'background 0.15s',
-                userSelect: 'none',
-              }}
-              onMouseEnter={(e) => { if (!mobileResizing) (e.target as HTMLElement).style.background = 'rgba(80,37,129,0.3)' }}
-              onMouseLeave={(e) => { if (!mobileResizing) (e.target as HTMLElement).style.background = 'transparent' }}
-            />
-          </div>
-        )}
       </div>
     </div>
   )
