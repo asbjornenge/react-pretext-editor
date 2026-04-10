@@ -1,17 +1,31 @@
-import type { Block, LayoutData, MediaItem } from '../../src/types'
+import type { LayoutData, MediaItem } from '../../src/types'
 
-export const exampleBlocks: Block[] = [
-  { type: 'paragraph', tag: 'p', text: 'Hei, kaffeelskere! Vi i Bøllefrø er stolte av å lansere bloggen vår. Her vil vi dele alt fra bryggeguider og kaffetips til historier om bønnene våre og folkene bak dem. Vi har jobbet lenge med å finne de beste bønnene fra små gårder rundt om i verden, og nå vil vi endelig dele reisen vår med dere.' },
-  { type: 'heading', tag: 'h2', text: 'Hva kan du forvente?' },
-  { type: 'paragraph', tag: 'p', text: 'Vi planlegger å skrive om alt som har med kaffe å gjøre. Fra hvordan vi velger ut bønner fra små gårder rundt om i verden, til hvordan du kan få mest mulig ut av kaffen hjemme. Vi vil også dele nyheter om nye produkter og sesonger. Kaffe er så mye mer enn bare en drikk — det er en kultur, en lidenskap, og en daglig rituell som vi ønsker å gjøre enda bedre for deg.' },
-  { type: 'paragraph', tag: 'p', text: 'Hver uke vil vi publisere nye artikler om alt fra bryggemetoder og utstyr til reiser til kaffegårder og intervjuer med folk i bransjen. Vi tror at jo mer du vet om kaffen din, desto bedre smaker den. Og vi vil gjøre det enkelt og tilgjengelig for alle — enten du er nybegynner eller erfaren barista.' },
-  { type: 'heading', tag: 'h2', text: 'Hvem er Bøllefrø?' },
-  { type: 'paragraph', tag: 'p', text: 'Bøllefrø er et mikrorosteri basert i Sandnes, Rogaland. Vi røster kaffe i små partier for å sikre topp kvalitet i hver eneste kopp. Vårt mål er enkelt: å få spesialkaffe hjem til deg så enkelt som mulig. Vi startet som et lite hobbyprosjekt i en garasje, og har vokst til å bli et ordentlig mikrorøsteri med kunder over hele Rogaland og utover.' },
-  { type: 'paragraph', tag: 'p', text: 'Vi samarbeider direkte med bønder i Kenya, Colombia, Etiopia og Brasil for å finne de mest spennende og smaksrike bønnene. Hver opprinnelse har sin egen karakter — fra de fruktige og florale smakene fra Kirinyaga i Kenya, til de sjokoladige og nøtteaktige profilene fra Huila i Colombia. Vi røster hver opprinnelse individuelt for å fremheve de unike smaksnotene.' },
-  { type: 'heading', tag: 'h2', text: 'Kaffe med sjel' },
-  { type: 'paragraph', tag: 'p', text: 'For oss handler kaffe om mer enn bare smak. Det handler om menneskene som dyrker den, om miljøet den vokser i, og om øyeblikkene den skaper. En god kopp kaffe kan gjøre en vanlig tirsdag morgen til noe spesielt. Det er den følelsen vi vil gi deg med hver eneste pose fra Bøllefrø.' },
-  { type: 'paragraph', tag: 'p', text: 'Følg med for mer innhold. Vi gleder oss til å dele vår kaffelidenskap med deg!' },
-]
+export const exampleMarkdown = `Hei, kaffeelskere! Vi i **Bøllefrø** er stolte av å lansere bloggen vår. Her vil vi dele alt fra bryggeguider og kaffetips til historier om bønnene våre og folkene bak dem. Vi har jobbet lenge med å finne de beste bønnene fra små gårder rundt om i verden, og nå vil vi endelig dele reisen vår med dere.
+
+## Hva kan du forvente?
+
+Vi planlegger å skrive om alt som har med kaffe å gjøre. Fra hvordan vi velger ut bønner fra *små gårder* rundt om i verden, til hvordan du kan få mest mulig ut av kaffen hjemme. Vi vil også dele nyheter om nye produkter og sesonger. Kaffe er så mye mer enn bare en drikk — det er en **kultur**, en *lidenskap*, og en daglig rituell som vi ønsker å gjøre enda bedre for deg.
+
+Hver uke vil vi publisere nye artikler om alt fra bryggemetoder og utstyr til reiser til kaffegårder og intervjuer med folk i bransjen. Vi tror at jo mer du vet om kaffen din, desto bedre smaker den.
+
+## Hvem er Bøllefrø?
+
+Bøllefrø er et mikrorosteri basert i **Sandnes, Rogaland**. Vi røster kaffe i små partier for å sikre topp kvalitet i hver eneste kopp. Vårt mål er enkelt: å få spesialkaffe hjem til deg så enkelt som mulig.
+
+Vi samarbeider direkte med bønder i:
+
+- **Kenya** — fruktige og florale smaker fra *Kirinyaga*
+- **Colombia** — sjokoladige og nøtteaktige profiler fra *Huila*
+- **Etiopia** — komplekse og blomsteraktige noter
+- **Brasil** — klassisk nøtteaktig og karamell
+
+> Kaffe er ikke bare en drikk. Det er en reise fra jord til kopp, fra bonde til barista.
+
+## Kaffe med sjel
+
+For oss handler kaffe om mer enn bare smak. Det handler om menneskene som dyrker den, om miljøet den vokser i, og om øyeblikkene den skaper. En god kopp kaffe kan gjøre en vanlig tirsdag morgen til noe **spesielt**.
+
+Følg med for mer innhold. Vi gleder oss til å dele vår kaffelidenskap med deg!`
 
 const CMS_URL = ''
 

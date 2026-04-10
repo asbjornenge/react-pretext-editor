@@ -1,4 +1,4 @@
-import type { Block, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
+import type { Block, TextSegment, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
 
 const DEFAULT_CONFIG: Required<LayoutConfig> = {
   bodyFont: '16px Lato, sans-serif',
@@ -27,19 +27,23 @@ export interface ImageData {
 }
 
 export interface LayoutElement {
-  type: 'text' | 'image' | 'dropCap'
+  type: 'text' | 'image' | 'dropCap' | 'hr' | 'listBullet' | 'blockquoteBorder' | 'codeBlock'
   text?: string
   char?: string
   x: number
   y: number
   font?: string
   width?: number
+  height?: number
   imageIndex?: number
   url?: string
   alt?: string
   polygon?: PolygonPoint[]
   blockIndex?: number
   wordIndex?: number
+  segments?: TextSegment[]   // Rich text segments for inline formatting
+  charOffset?: number        // Character offset into block's text where this line starts
+  language?: string          // For code blocks
 }
 
 export interface LayoutResult {
@@ -167,6 +171,26 @@ function probeTextHeight(
 ): number {
   let y = 0
   for (const block of blocks) {
+    if (block.type === 'hr') { y += 20 + cfg.blockGap; continue }
+    if (block.type === 'code') {
+      y += (block.text.split('\n').length * 20) + 20 + cfg.blockGap
+      continue
+    }
+    if (block.type === 'list') {
+      for (const item of block.items || []) {
+        const prepared = engine.prepareWithSegments(item.text, cfg.bodyFont)
+        let cursor = { segmentIndex: 0, graphemeIndex: 0 }
+        while (true) {
+          const line = engine.layoutNextLine(prepared, cursor, containerWidth - 24)
+          if (!line) break
+          y += cfg.bodyLineHeight
+          cursor = line.end
+        }
+        y += 4
+      }
+      y += cfg.blockGap
+      continue
+    }
     const isHeading = block.type === 'heading'
     const font = isHeading ? cfg.headingFont : cfg.bodyFont
     const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
@@ -217,12 +241,67 @@ export function layoutBlocks(
     }
   }
 
-  // Column layout function — renders text into columns with given columnHeight
+  const LIST_INDENT = 24
+  const BLOCKQUOTE_INDENT = 20
+  const BLOCKQUOTE_BORDER = 3
+
+  // Column layout function
   const renderColumns = (colHeight: number, emit: boolean) => {
     const elements: LayoutElement[] = []
+
+    // Render a text block into elements, returns final y
+    const renderTextBlock = (
+      text: string, font: string, lineHeight: number, indent: number,
+      colImgs: ImageData[], colX: number, startY: number,
+      colIdx: number, blockIdx: number, segments?: TextSegment[],
+    ): { y: number; cursor: any; done: boolean; overflow: boolean; charOffset: number } => {
+      const prepared = engine.prepareWithSegments(text, font)
+      let cursor = { segmentIndex: 0, graphemeIndex: 0 }
+      let y = startY
+      let charOffset = 0
+
+      while (true) {
+        if (numColumns > 1 && y >= colHeight && colIdx < numColumns - 1) {
+          return { y, cursor, done: false, overflow: true, charOffset }
+        }
+        const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding)
+        if (slots.length === 0) { y += lineHeight; continue }
+        // Filter slots to those wide enough after applying indent
+        const usableSlots = slots.filter(slot => {
+          const w = Math.min(slot.right, columnWidth) - Math.max(slot.left, indent)
+          return w >= 30
+        })
+        if (usableSlots.length === 0) { y += lineHeight; continue }
+        let renderedOnLine = false
+        for (const slot of usableSlots) {
+          const slotWidth = Math.min(slot.right, columnWidth) - Math.max(slot.left, indent)
+          const adjustedLeft = Math.max(slot.left, indent)
+          const line = engine.layoutNextLine(prepared, cursor, slotWidth)
+          if (!line) {
+            if (renderedOnLine) y += lineHeight
+            return { y, cursor, done: true, overflow: false, charOffset }
+          }
+          if (emit) {
+            elements.push({
+              type: 'text',
+              text: line.text,
+              x: adjustedLeft + colX,
+              y,
+              font,
+              blockIndex: blockIdx,
+              segments,
+              charOffset,
+            })
+          }
+          charOffset += line.text.length
+          cursor = line.end
+          renderedOnLine = true
+        }
+        if (renderedOnLine) y += lineHeight
+      }
+    }
     let currentBlockIdx = 0
     let currentCursor: any = null
-    let blockWordCount = 0
     let maxColumnY = 0
 
     columnLoop:
@@ -233,50 +312,144 @@ export function layoutBlocks(
 
       while (currentBlockIdx < blocks.length) {
         const block = blocks[currentBlockIdx]
-        const isHeading = block.type === 'heading'
-        const font = isHeading ? cfg.headingFont : cfg.bodyFont
-        const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
 
-        if (isHeading && currentCursor === null) y += cfg.blockGap
+        // Column overflow check
+        if (numColumns > 1 && y >= colHeight && c < numColumns - 1) {
+          maxColumnY = Math.max(maxColumnY, y)
+          continue columnLoop
+        }
 
-        const prepared = engine.prepareWithSegments(block.text, font)
-        let cursor = currentCursor || { segmentIndex: 0, graphemeIndex: 0 }
-        let blockDone = false
-
-        while (!blockDone) {
-          if (numColumns > 1 && y >= colHeight && c < numColumns - 1) {
-            currentCursor = cursor
-            maxColumnY = Math.max(maxColumnY, y)
-            continue columnLoop
+        switch (block.type) {
+          case 'heading': {
+            if (currentCursor === null) y += cfg.blockGap
+            const font = cfg.headingFont
+            const lineHeight = cfg.headingLineHeight
+            const result = renderTextBlock(
+              block.text, font, lineHeight, 0, colImgs, colX, y, c, currentBlockIdx, block.segments
+            )
+            y = result.y
+            if (result.overflow) { currentCursor = result.cursor; maxColumnY = Math.max(maxColumnY, y); continue columnLoop }
+            break
           }
-          const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding)
-          if (slots.length === 0) { y += lineHeight; continue }
-          let renderedOnLine = false
-          for (const slot of slots) {
-            const line = engine.layoutNextLine(prepared, cursor, slot.right - slot.left)
-            if (!line) { blockDone = true; break }
-            if (emit) {
-              const words = line.text.trim().split(/\s+/).filter((w: string) => w.length > 0)
-              elements.push({
-                type: 'text',
-                text: line.text,
-                x: slot.left + colX,
-                y,
-                font,
-                blockIndex: currentBlockIdx,
-                wordIndex: blockWordCount,
-              })
-              blockWordCount += words.length
+          case 'paragraph': {
+            const result = renderTextBlock(
+              block.text, cfg.bodyFont, cfg.bodyLineHeight, 0, colImgs, colX, y, c, currentBlockIdx, block.segments
+            )
+            y = result.y
+            if (result.overflow) { currentCursor = result.cursor; maxColumnY = Math.max(maxColumnY, y); continue columnLoop }
+            break
+          }
+          case 'list': {
+            const items = block.items || []
+            for (let li = 0; li < items.length; li++) {
+              const item = items[li]
+              const bullet = block.tag === 'ol' ? `${li + 1}.` : '•'
+              if (emit) {
+                elements.push({
+                  type: 'listBullet',
+                  text: bullet,
+                  x: colX + 4,
+                  y,
+                  font: cfg.bodyFont,
+                  blockIndex: currentBlockIdx,
+                })
+              }
+              const result = renderTextBlock(
+                item.text, cfg.bodyFont, cfg.bodyLineHeight, LIST_INDENT, colImgs, colX, y, c, currentBlockIdx, item.segments
+              )
+              y = result.y + 4 // small gap between items
             }
-            cursor = line.end
-            renderedOnLine = true
+            break
           }
-          if (renderedOnLine) y += lineHeight
+          case 'blockquote': {
+            const startY = y
+            if (emit) {
+              // Border will be positioned after we know the height
+              elements.push({
+                type: 'blockquoteBorder',
+                x: colX + 4,
+                y: startY,
+                width: BLOCKQUOTE_BORDER,
+                height: 0, // placeholder, updated below
+                blockIndex: currentBlockIdx,
+              })
+            }
+            const result = renderTextBlock(
+              block.text, cfg.bodyFont, cfg.bodyLineHeight, BLOCKQUOTE_INDENT, colImgs, colX, y, c, currentBlockIdx, block.segments
+            )
+            y = result.y
+            // Update border height
+            if (emit && elements.length > 0) {
+              const borderEl = elements[elements.length - 1 - (result.charOffset > 0 ? Math.ceil(result.charOffset / 40) : 0)]
+              // Find the border element we just pushed
+              for (let i = elements.length - 1; i >= 0; i--) {
+                if (elements[i].type === 'blockquoteBorder' && elements[i].blockIndex === currentBlockIdx) {
+                  elements[i].height = y - startY
+                  break
+                }
+              }
+            }
+            break
+          }
+          case 'code': {
+            const codeFont = "14px 'SF Mono', 'Fira Code', Consolas, monospace"
+            const codeLineHeight = 20
+            const lines = block.text.split('\n')
+            const codeStartY = y
+            if (emit) {
+              elements.push({
+                type: 'codeBlock',
+                x: colX,
+                y: codeStartY,
+                width: columnWidth,
+                height: lines.length * codeLineHeight + 20,
+                language: block.language,
+                blockIndex: currentBlockIdx,
+              })
+            }
+            y += 10 // top padding
+            for (const line of lines) {
+              if (emit) {
+                elements.push({
+                  type: 'text',
+                  text: line,
+                  x: colX + 12,
+                  y,
+                  font: codeFont,
+                  blockIndex: currentBlockIdx,
+                })
+              }
+              y += codeLineHeight
+            }
+            y += 10 // bottom padding
+            break
+          }
+          case 'hr': {
+            y += 10
+            if (emit) {
+              elements.push({
+                type: 'hr',
+                x: colX,
+                y,
+                width: columnWidth,
+                blockIndex: currentBlockIdx,
+              })
+            }
+            y += 10
+            break
+          }
+          default: {
+            // Fallback: treat as paragraph
+            const result = renderTextBlock(
+              block.text, cfg.bodyFont, cfg.bodyLineHeight, 0, colImgs, colX, y, c, currentBlockIdx, block.segments
+            )
+            y = result.y
+            break
+          }
         }
 
         currentBlockIdx++
         currentCursor = null
-        blockWordCount = 0
         y += cfg.blockGap
       }
       maxColumnY = Math.max(maxColumnY, y)

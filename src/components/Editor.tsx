@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { Pen, LayoutGrid, Eye, Columns2, Plus, X } from 'lucide-react'
 import LayoutView from './LayoutView'
+import { parseMarkdown, blocksToMarkdown } from '../engine/markdown'
 import type { Block, LayoutData, LayoutImage, LayoutBreakpoint, LayoutConfig } from '../types'
 
 type EditorMode = 'write' | 'layout'
@@ -24,30 +25,6 @@ const DEFAULT_CONFIG = {
   headingLineHeight: 36,
   blockGap: 16,
   imgPadding: 10,
-}
-
-function blocksToMarkdown(blocks: Block[]): string {
-  return blocks.map(b => {
-    if (b.type === 'heading') {
-      const level = b.tag === 'h3' ? '###' : b.tag === 'h1' ? '#' : '##'
-      return `${level} ${b.text}`
-    }
-    return b.text
-  }).join('\n\n')
-}
-
-function markdownToBlocks(md: string): Block[] {
-  return md.split(/\n\n+/).map(chunk => {
-    const trimmed = chunk.trim()
-    if (!trimmed) return null
-    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/)
-    if (headingMatch) {
-      const level = headingMatch[1].length
-      const tag = level === 1 ? 'h1' : level === 3 ? 'h3' : 'h2'
-      return { type: 'heading' as const, text: headingMatch[2], tag }
-    }
-    return { type: 'paragraph' as const, text: trimmed, tag: 'p' }
-  }).filter(Boolean) as Block[]
 }
 
 export default function Editor({
@@ -185,7 +162,7 @@ export default function Editor({
     const text = e.target.value
     setMarkdownText(text)
     if (onBlocksChange) {
-      onBlocksChange(markdownToBlocks(text))
+      onBlocksChange(parseMarkdown(text))
     }
   }, [onBlocksChange])
 

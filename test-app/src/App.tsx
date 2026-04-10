@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Editor } from '../../src'
+import { Editor, parseMarkdown } from '../../src'
 import type { Block, LayoutData } from '../../src/types'
-import { exampleBlocks, exampleLayout, exampleMedia } from './example-data'
+import { exampleMarkdown, exampleLayout, exampleMedia } from './example-data'
 
 export default function App() {
-  const [blocks, setBlocks] = useState<Block[]>(exampleBlocks)
+  const [blocks, setBlocks] = useState<Block[]>(() => parseMarkdown(exampleMarkdown))
   const [layout, setLayout] = useState<LayoutData>(exampleLayout)
 
   return (

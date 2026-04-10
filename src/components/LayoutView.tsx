@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { usePretextEngine } from '../engine/pretext-loader'
 import { layoutBlocks, prepareImageData } from '../engine/layout'
-import type { Block, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
+import type { Block, TextSegment, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
 import type { LayoutElement } from '../engine/layout'
 
 // Resolve which breakpoint applies for a given container width
@@ -102,6 +102,50 @@ export default function LayoutView({
 
   const isEditor = !!editorMode
 
+  // Render text with inline formatting from segments
+  const renderTextWithSegments = (lineText: string, segments?: TextSegment[], charOffset?: number): React.ReactNode => {
+    if (!segments || segments.length === 0) return lineText
+    const offset = charOffset || 0
+    const lineEnd = offset + lineText.length
+
+    // Find which segments overlap this line
+    let segStart = 0
+    const parts: React.ReactNode[] = []
+    let partKey = 0
+
+    for (const seg of segments) {
+      const segEnd = segStart + seg.text.length
+      // Check overlap with [offset, lineEnd)
+      const overlapStart = Math.max(segStart, offset)
+      const overlapEnd = Math.min(segEnd, lineEnd)
+
+      if (overlapStart < overlapEnd) {
+        const text = seg.text.slice(overlapStart - segStart, overlapEnd - segStart)
+        const style: React.CSSProperties = {}
+        if (seg.bold) style.fontWeight = 'bold'
+        if (seg.italic) style.fontStyle = 'italic'
+        if (seg.code) {
+          style.fontFamily = "'SF Mono', 'Fira Code', Consolas, monospace"
+          style.background = 'rgba(80,37,129,0.08)'
+          style.padding = '1px 4px'
+          style.borderRadius = '3px'
+          style.fontSize = '0.9em'
+        }
+        if (seg.link) { style.color = '#502581'; style.textDecoration = 'underline' }
+        if (seg.strikethrough) style.textDecoration = 'line-through'
+
+        if (Object.keys(style).length > 0) {
+          parts.push(<span key={partKey++} style={style}>{text}</span>)
+        } else {
+          parts.push(<React.Fragment key={partKey++}>{text}</React.Fragment>)
+        }
+      }
+      segStart = segEnd
+    }
+
+    return parts.length > 0 ? parts : lineText
+  }
+
   return (
     <div
       ref={containerRef}
@@ -142,8 +186,78 @@ export default function LayoutView({
                     pointerEvents: 'none',
                   }}
                 >
+                  {renderTextWithSegments(el.text || '', el.segments, el.charOffset || 0)}
+                </span>
+              )
+            }
+            if (el.type === 'listBullet') {
+              return (
+                <span
+                  key={`bullet-${i}`}
+                  style={{
+                    position: 'absolute',
+                    font: el.font,
+                    left: el.x,
+                    top: el.y,
+                    color: '#502581',
+                    pointerEvents: 'none',
+                    fontWeight: 600,
+                  }}
+                >
                   {el.text}
                 </span>
+              )
+            }
+            if (el.type === 'blockquoteBorder') {
+              return (
+                <div
+                  key={`bqborder-${i}`}
+                  style={{
+                    position: 'absolute',
+                    left: el.x,
+                    top: el.y,
+                    width: el.width,
+                    height: el.height,
+                    background: '#502581',
+                    borderRadius: 2,
+                    opacity: 0.4,
+                    pointerEvents: 'none',
+                  }}
+                />
+              )
+            }
+            if (el.type === 'codeBlock') {
+              return (
+                <div
+                  key={`code-${i}`}
+                  style={{
+                    position: 'absolute',
+                    left: el.x,
+                    top: el.y,
+                    width: el.width,
+                    height: el.height,
+                    background: '#f5f2f0',
+                    border: '1px solid #e0d8d0',
+                    borderRadius: 4,
+                    pointerEvents: 'none',
+                  }}
+                />
+              )
+            }
+            if (el.type === 'hr') {
+              return (
+                <div
+                  key={`hr-${i}`}
+                  style={{
+                    position: 'absolute',
+                    left: el.x,
+                    top: el.y,
+                    width: el.width,
+                    height: 1,
+                    background: '#ccc',
+                    pointerEvents: 'none',
+                  }}
+                />
               )
             }
             if (el.type === 'image') {

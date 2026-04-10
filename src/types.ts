@@ -32,10 +32,23 @@ export interface LayoutData {
   breakpoints?: LayoutBreakpoint[]
 }
 
-export interface Block {
-  type: 'heading' | 'paragraph'
+export interface TextSegment {
   text: string
-  tag?: string
+  bold?: boolean
+  italic?: boolean
+  code?: boolean
+  link?: string
+  strikethrough?: boolean
+}
+
+export interface Block {
+  type: 'heading' | 'paragraph' | 'list' | 'blockquote' | 'code' | 'hr'
+  text: string              // Plain text (used by layout engine for line breaking)
+  segments?: TextSegment[]  // Rich text segments for rendering
+  tag?: string              // h1/h2/h3 for headings, ul/ol for lists
+  items?: Block[]           // For lists: each item is a block
+  language?: string         // For code blocks
+  depth?: number            // Nesting depth for blockquotes/lists
 }
 
 export interface LayoutConfig {
