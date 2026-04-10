@@ -64,6 +64,7 @@ export default function Editor({
   const containerRef = useRef<HTMLDivElement>(null)
   const layoutPanelRef = useRef<HTMLDivElement>(null)
   const layoutViewRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [markdownText, setMarkdownText] = useState(() => blocksToMarkdown(blocks))
 
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
@@ -187,6 +188,18 @@ export default function Editor({
       onBlocksChange(markdownToBlocks(text))
     }
   }, [onBlocksChange])
+
+  // Auto-resize textarea to fit content
+  const autoResizeTextarea = useCallback(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = ta.scrollHeight + 'px'
+  }, [])
+
+  useEffect(() => {
+    autoResizeTextarea()
+  }, [markdownText, activeModes])
 
   // Helper: find image element in LayoutView by index
   const findImageEl = (index: number): HTMLImageElement | null => {
@@ -440,21 +453,21 @@ export default function Editor({
       <div ref={containerRef}
         style={{
           display: 'flex', background: 'white', border: '1px solid #ddd', borderRadius: '0 0 6px 6px',
-          borderTop: 'none', minHeight: height || 300, height: height, overflow: 'hidden',
+          borderTop: 'none', minHeight: height || 300,
         }}>
 
         {/* Write panel */}
         {activeModes.has('write') && (
           <div style={{ flex: 1, overflow: 'auto', borderRight: activeModes.size > 1 ? '1px solid #ddd' : 'none' }}>
             <textarea
+              ref={textareaRef}
               autoFocus
               value={markdownText}
               onChange={handleTextChange}
               placeholder="Write your content here...&#10;&#10;Use ## for headings&#10;&#10;Separate paragraphs with blank lines"
               style={{
                 width: '100%',
-                height: '100%',
-                minHeight: height || 400,
+                minHeight: 200,
                 padding: 20,
                 border: 'none',
                 outline: 'none',
@@ -465,6 +478,7 @@ export default function Editor({
                 resize: 'none',
                 caretColor: '#502581',
                 boxSizing: 'border-box',
+                overflow: 'hidden',
               }}
             />
           </div>
