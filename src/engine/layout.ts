@@ -205,12 +205,7 @@ export function layoutBlocks(
     ? (containerWidth - (numColumns - 1) * columnGap) / numColumns
     : containerWidth
 
-  // Estimate column height from text-only probe
-  const textHeight = probeTextHeight(blocks, columnWidth, engine, cfg)
-  const columnHeight = numColumns > 1 ? Math.ceil(textHeight / numColumns) : textHeight
-
-  // For each column, collect images that overlap with the column's x range
-  // An image can be in multiple columns if it spans them
+  // Collect per-column images
   const columnImageData: ImageData[][] = Array.from({ length: numColumns }, () => [])
   for (const img of imgData) {
     for (let col = 0; col < numColumns; col++) {
@@ -222,68 +217,93 @@ export function layoutBlocks(
     }
   }
 
-  // Render text column by column with per-column images
-  const elements: LayoutElement[] = []
-  let currentBlockIdx = 0
-  let currentCursor: any = null
-  let blockWordCount = 0
-  let maxColumnY = 0
+  // Column layout function — renders text into columns with given columnHeight
+  const renderColumns = (colHeight: number, emit: boolean) => {
+    const elements: LayoutElement[] = []
+    let currentBlockIdx = 0
+    let currentCursor: any = null
+    let blockWordCount = 0
+    let maxColumnY = 0
 
-  columnLoop:
-  for (let c = 0; c < numColumns; c++) {
-    const colX = c * (columnWidth + columnGap)
-    const colImgs = columnImageData[c]
-    let y = 0
+    columnLoop:
+    for (let c = 0; c < numColumns; c++) {
+      const colX = c * (columnWidth + columnGap)
+      const colImgs = columnImageData[c]
+      let y = 0
 
-    while (currentBlockIdx < blocks.length) {
-      const block = blocks[currentBlockIdx]
-      const isHeading = block.type === 'heading'
-      const font = isHeading ? cfg.headingFont : cfg.bodyFont
-      const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
+      while (currentBlockIdx < blocks.length) {
+        const block = blocks[currentBlockIdx]
+        const isHeading = block.type === 'heading'
+        const font = isHeading ? cfg.headingFont : cfg.bodyFont
+        const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
 
-      if (isHeading && currentCursor === null) y += cfg.blockGap
+        if (isHeading && currentCursor === null) y += cfg.blockGap
 
-      const prepared = engine.prepareWithSegments(block.text, font)
-      let cursor = currentCursor || { segmentIndex: 0, graphemeIndex: 0 }
-      let blockDone = false
+        const prepared = engine.prepareWithSegments(block.text, font)
+        let cursor = currentCursor || { segmentIndex: 0, graphemeIndex: 0 }
+        let blockDone = false
 
-      while (!blockDone) {
-        if (numColumns > 1 && y >= columnHeight && c < numColumns - 1) {
-          currentCursor = cursor
-          maxColumnY = Math.max(maxColumnY, y)
-          continue columnLoop
+        while (!blockDone) {
+          if (numColumns > 1 && y >= colHeight && c < numColumns - 1) {
+            currentCursor = cursor
+            maxColumnY = Math.max(maxColumnY, y)
+            continue columnLoop
+          }
+          const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding)
+          if (slots.length === 0) { y += lineHeight; continue }
+          let renderedOnLine = false
+          for (const slot of slots) {
+            const line = engine.layoutNextLine(prepared, cursor, slot.right - slot.left)
+            if (!line) { blockDone = true; break }
+            if (emit) {
+              const words = line.text.trim().split(/\s+/).filter((w: string) => w.length > 0)
+              elements.push({
+                type: 'text',
+                text: line.text,
+                x: slot.left + colX,
+                y,
+                font,
+                blockIndex: currentBlockIdx,
+                wordIndex: blockWordCount,
+              })
+              blockWordCount += words.length
+            }
+            cursor = line.end
+            renderedOnLine = true
+          }
+          if (renderedOnLine) y += lineHeight
         }
-        const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding)
-        if (slots.length === 0) { y += lineHeight; continue }
-        let renderedOnLine = false
-        for (const slot of slots) {
-          const line = engine.layoutNextLine(prepared, cursor, slot.right - slot.left)
-          if (!line) { blockDone = true; break }
-          const words = line.text.trim().split(/\s+/).filter((w: string) => w.length > 0)
-          elements.push({
-            type: 'text',
-            text: line.text,
-            x: slot.left + colX,
-            y,
-            font,
-            blockIndex: currentBlockIdx,
-            wordIndex: blockWordCount,
-          })
-          blockWordCount += words.length
-          cursor = line.end
-          renderedOnLine = true
-        }
-        if (renderedOnLine) y += lineHeight
+
+        currentBlockIdx++
+        currentCursor = null
+        blockWordCount = 0
+        y += cfg.blockGap
       }
-
-      currentBlockIdx++
-      currentCursor = null
-      blockWordCount = 0
-      y += cfg.blockGap
+      maxColumnY = Math.max(maxColumnY, y)
+      break
     }
-    maxColumnY = Math.max(maxColumnY, y)
-    break
+    return { elements, maxColumnY }
   }
+
+  // Estimate column height: text height + image text displacement
+  const textHeight = probeTextHeight(blocks, columnWidth, engine, cfg)
+  let columnHeight: number
+  if (numColumns > 1) {
+    // Estimate how much vertical space images displace from text
+    // An image blocking X% of column width displaces ~X% of each text line it covers
+    let totalDisplacement = 0
+    for (const img of imgData) {
+      const imgH = img.width * (img.aspectRatio || 1.2)
+      const blockFraction = Math.min(1, img.width / columnWidth)
+      totalDisplacement += imgH * blockFraction
+    }
+    columnHeight = Math.ceil((textHeight + totalDisplacement) / numColumns)
+  } else {
+    columnHeight = textHeight
+  }
+
+  // Final pass: render with adjusted columnHeight
+  const { elements, maxColumnY } = renderColumns(columnHeight, true)
 
   // Add image elements at their absolute positions
   let actualHeight = maxColumnY
