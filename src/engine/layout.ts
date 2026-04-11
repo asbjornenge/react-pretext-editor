@@ -3,9 +3,15 @@ import type { Block, TextSegment, LayoutImage, LayoutConfig, PolygonPoint } from
 const DEFAULT_CONFIG: Required<LayoutConfig> = {
   bodyFont: '16px Lato, sans-serif',
   headingFont: 'bold 24px Lato, sans-serif',
+  h1Font: 'bold 32px Lato, sans-serif',
+  h2Font: 'bold 24px Lato, sans-serif',
+  h3Font: 'bold 20px Lato, sans-serif',
   dropCapFont: '96px FloralCapitals, serif',
   bodyLineHeight: 26,
   headingLineHeight: 36,
+  h1LineHeight: 42,
+  h2LineHeight: 34,
+  h3LineHeight: 28,
   blockGap: 16,
   imgPadding: 10,
   dropCap: false,
@@ -192,8 +198,12 @@ function probeTextHeight(
       continue
     }
     const isHeading = block.type === 'heading'
-    const font = isHeading ? cfg.headingFont : cfg.bodyFont
-    const lineHeight = isHeading ? cfg.headingLineHeight : cfg.bodyLineHeight
+    const font = isHeading
+      ? (block.tag === 'h1' ? cfg.h1Font : block.tag === 'h3' ? cfg.h3Font : cfg.h2Font)
+      : cfg.bodyFont
+    const lineHeight = isHeading
+      ? (block.tag === 'h1' ? cfg.h1LineHeight : block.tag === 'h3' ? cfg.h3LineHeight : cfg.h2LineHeight)
+      : cfg.bodyLineHeight
     if (isHeading) y += cfg.blockGap
     const prepared = engine.prepareWithSegments(block.text, font)
     let cursor = { segmentIndex: 0, graphemeIndex: 0 }
@@ -322,8 +332,8 @@ export function layoutBlocks(
         switch (block.type) {
           case 'heading': {
             if (currentCursor === null) y += cfg.blockGap
-            const font = cfg.headingFont
-            const lineHeight = cfg.headingLineHeight
+            const font = block.tag === 'h1' ? cfg.h1Font : block.tag === 'h3' ? cfg.h3Font : cfg.h2Font
+            const lineHeight = block.tag === 'h1' ? cfg.h1LineHeight : block.tag === 'h3' ? cfg.h3LineHeight : cfg.h2LineHeight
             const result = renderTextBlock(
               block.text, font, lineHeight, 0, colImgs, colX, y, c, currentBlockIdx, block.segments
             )

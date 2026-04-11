@@ -54,9 +54,15 @@ export interface Block {
 export interface LayoutConfig {
   bodyFont?: string
   headingFont?: string
+  h1Font?: string
+  h2Font?: string
+  h3Font?: string
   dropCapFont?: string
   bodyLineHeight?: number
   headingLineHeight?: number
+  h1LineHeight?: number
+  h2LineHeight?: number
+  h3LineHeight?: number
   blockGap?: number
   imgPadding?: number
   dropCap?: boolean
