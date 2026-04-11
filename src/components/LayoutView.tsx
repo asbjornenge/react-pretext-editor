@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { usePretextEngine } from '../engine/pretext-loader'
 import { layoutBlocks, prepareImageData } from '../engine/layout'
-import type { Block, TextSegment, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
+import type { Block, TextSegment, FontOption, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
 import type { LayoutElement } from '../engine/layout'
 
 // Resolve which breakpoint applies for a given container width
@@ -41,6 +41,7 @@ interface LayoutViewProps {
   blocks: Block[]
   layout: LayoutData
   config?: LayoutConfig
+  availableFonts?: FontOption[]
   resolveImageUrl?: (url: string, filename: string) => string
   className?: string
   style?: React.CSSProperties
@@ -52,6 +53,7 @@ export default function LayoutView({
   blocks,
   layout,
   config,
+  availableFonts,
   resolveImageUrl,
   className,
   style,
@@ -77,7 +79,18 @@ export default function LayoutView({
     const scale = containerWidth / editorWidth
     const imgData = prepareImageData(bp.images || [], scale, containerWidth)
 
-    const cfg = { dropCap: false, ...config, columns: bp.columns || config?.columns || 1 }
+    // Resolve font from layout.fontFamily
+    const selectedFont = availableFonts?.find(f => f.name === layout.fontFamily)
+    const fontOverrides: Partial<LayoutConfig> = selectedFont ? {
+      bodyFont: selectedFont.bodyFont,
+      headingFont: selectedFont.headingFont || `bold ${selectedFont.bodyFont}`,
+      h1Font: `bold 32px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
+      h2Font: selectedFont.headingFont || `bold 24px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
+      h3Font: `bold 20px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
+      ...(selectedFont.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
+      ...(selectedFont.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
+    } : {}
+    const cfg = { dropCap: false, ...config, ...fontOverrides, columns: bp.columns || config?.columns || 1 }
 
     const layoutResult = layoutBlocks(blocks, imgData, containerWidth, engine, cfg)
     setResult({ ...layoutResult, activeImages: bp.images || [] })

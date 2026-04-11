@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { Pen, LayoutGrid, Eye, Columns2, Plus, X } from 'lucide-react'
 import LayoutView from './LayoutView'
 import { parseMarkdown, blocksToMarkdown } from '../engine/markdown'
-import type { Block, LayoutData, LayoutImage, LayoutBreakpoint, LayoutConfig } from '../types'
+import type { Block, FontOption, LayoutData, LayoutImage, LayoutBreakpoint, LayoutConfig } from '../types'
 
 type EditorMode = 'write' | 'layout'
 
@@ -13,6 +13,7 @@ interface EditorProps {
   onBlocksChange?: (blocks: Block[]) => void
   resolveImageUrl?: (url: string, filename: string) => string
   config?: LayoutConfig
+  availableFonts?: FontOption[]
   height?: number | string
   expandable?: boolean
   width?: number | string
@@ -34,6 +35,7 @@ export default function Editor({
   onBlocksChange,
   resolveImageUrl,
   config,
+  availableFonts,
   height,
   expandable,
   width,
@@ -92,8 +94,20 @@ export default function Editor({
   } | null>(null)
   const polyDragUsedRef = useRef(false)
 
-  const cfg = { ...DEFAULT_CONFIG, ...config }
   const layoutData: LayoutData = layout || { images: [] }
+
+  // Resolve font from layoutData.fontFamily → availableFonts → config → defaults
+  const selectedFont = availableFonts?.find(f => f.name === layoutData.fontFamily)
+  const fontConfig: Partial<LayoutConfig> = selectedFont ? {
+    bodyFont: selectedFont.bodyFont,
+    headingFont: selectedFont.headingFont || `bold ${selectedFont.bodyFont}`,
+    h1Font: selectedFont.headingFont ? selectedFont.headingFont.replace(/\d+px/, '32px') : `bold 32px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
+    h2Font: selectedFont.headingFont || `bold 24px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
+    h3Font: selectedFont.headingFont ? selectedFont.headingFont.replace(/\d+px/, '20px') : `bold 20px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
+    ...(selectedFont.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
+    ...(selectedFont.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
+  } : {}
+  const cfg = { ...DEFAULT_CONFIG, ...config, ...fontConfig }
 
   // Helpers to read/write the currently editing breakpoint's data
   const activeImages: LayoutImage[] = editingBreakpoint === -1
@@ -393,6 +407,24 @@ export default function Editor({
         ))}
         {/* Right-side controls */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Font selector */}
+          {availableFonts && availableFonts.length > 0 && (
+            <select
+              value={layoutData.fontFamily || ''}
+              onChange={(e) => onLayoutChange({ ...layoutData, fontFamily: e.target.value || undefined })}
+              style={{
+                padding: '3px 6px', fontSize: 12, cursor: 'pointer',
+                background: 'transparent', color: '#6a4c93',
+                border: '1px solid #d4c5e8', borderRadius: 3,
+                outline: 'none',
+              }}
+            >
+              <option value="">Default</option>
+              {availableFonts.map(f => (
+                <option key={f.name} value={f.name}>{f.name}</option>
+              ))}
+            </select>
+          )}
           {/* Column controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Columns2 size={14} color="#6a4c93" />
@@ -543,8 +575,9 @@ export default function Editor({
             <LayoutView
               containerRef={layoutViewRef}
               blocks={blocks}
-              layout={editingBreakpoint === -1 ? { ...layoutData, breakpoints: undefined } : { images: activeImages, columns: activeColumns, editorWidth: layoutData.breakpoints?.[editingBreakpoint]?.editorWidth }}
+              layout={editingBreakpoint === -1 ? { ...layoutData, breakpoints: undefined } : { images: activeImages, columns: activeColumns, editorWidth: layoutData.breakpoints?.[editingBreakpoint]?.editorWidth, fontFamily: layoutData.fontFamily }}
               config={config}
+              availableFonts={availableFonts}
               resolveImageUrl={resolveImageUrl}
               editorMode={previewMode ? undefined : {
                 selectedImageIndex,

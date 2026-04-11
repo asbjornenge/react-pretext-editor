@@ -28,6 +28,7 @@ export interface LayoutData {
   images: LayoutImage[]
   editorWidth?: number
   columns?: number
+  fontFamily?: string  // Reference to selected FontOption.name
   // Optional smaller breakpoint overrides
   breakpoints?: LayoutBreakpoint[]
 }
@@ -49,6 +50,14 @@ export interface Block {
   items?: Block[]           // For lists: each item is a block
   language?: string         // For code blocks
   depth?: number            // Nesting depth for blockquotes/lists
+}
+
+export interface FontOption {
+  name: string
+  bodyFont: string
+  headingFont?: string   // Override for headings (defaults to bold version of bodyFont)
+  bodyLineHeight?: number
+  headingLineHeight?: number
 }
 
 export interface LayoutConfig {
