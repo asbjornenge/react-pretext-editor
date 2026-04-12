@@ -79,17 +79,26 @@ export default function LayoutView({
     const scale = containerWidth / editorWidth
     const imgData = prepareImageData(bp.images || [], scale, containerWidth)
 
-    // Resolve font from layout.fontFamily
+    // Resolve font from layout.fontFamily + fontSize
     const selectedFont = availableFonts?.find(f => f.name === layout.fontFamily)
-    const fontOverrides: Partial<LayoutConfig> = selectedFont ? {
-      bodyFont: selectedFont.bodyFont,
-      headingFont: selectedFont.headingFont || `bold ${selectedFont.bodyFont}`,
-      h1Font: `bold 32px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
-      h2Font: selectedFont.headingFont || `bold 24px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
-      h3Font: `bold 20px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
-      ...(selectedFont.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
-      ...(selectedFont.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
-    } : {}
+    const DEFAULT_FONT_FAMILY = 'Lato, sans-serif'
+    const baseFontFamily = selectedFont
+      ? selectedFont.bodyFont.replace(/^\d+px\s*/, '')
+      : DEFAULT_FONT_FAMILY
+    const baseSize = layout.fontSize || 16
+    const fontOverrides: Partial<LayoutConfig> = {
+      bodyFont: `${baseSize}px ${baseFontFamily}`,
+      headingFont: `bold ${baseSize}px ${baseFontFamily}`,
+      h1Font: `bold ${Math.round(baseSize * 2)}px ${baseFontFamily}`,
+      h2Font: `bold ${Math.round(baseSize * 1.5)}px ${baseFontFamily}`,
+      h3Font: `bold ${Math.round(baseSize * 1.25)}px ${baseFontFamily}`,
+      bodyLineHeight: Math.round(baseSize * 1.6),
+      h1LineHeight: Math.round(baseSize * 2 * 1.3),
+      h2LineHeight: Math.round(baseSize * 1.5 * 1.4),
+      h3LineHeight: Math.round(baseSize * 1.25 * 1.4),
+      ...(selectedFont?.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
+      ...(selectedFont?.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
+    }
     const cfg = { dropCap: false, ...config, ...fontOverrides, columns: bp.columns || config?.columns || 1 }
 
     const layoutResult = layoutBlocks(blocks, imgData, containerWidth, engine, cfg)

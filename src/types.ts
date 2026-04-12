@@ -28,7 +28,8 @@ export interface LayoutData {
   images: LayoutImage[]
   editorWidth?: number
   columns?: number
-  fontFamily?: string  // Reference to selected FontOption.name
+  fontFamily?: string   // Reference to selected FontOption.name
+  fontSize?: number     // Base body font size in px (default 16)
   // Optional smaller breakpoint overrides
   breakpoints?: LayoutBreakpoint[]
 }

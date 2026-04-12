@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.4",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "lucide-react": "^1.7.0",
     "marked": "^18.0.0"
   },

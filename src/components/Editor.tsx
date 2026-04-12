@@ -1,3 +1,4 @@
+import '@fontsource/jetbrains-mono'
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { Pen, LayoutGrid, Eye, Columns2, Plus, X } from 'lucide-react'
 import LayoutView from './LayoutView'
@@ -96,17 +97,25 @@ export default function Editor({
 
   const layoutData: LayoutData = layout || { images: [] }
 
-  // Resolve font from layoutData.fontFamily → availableFonts → config → defaults
+  // Resolve font from layoutData.fontFamily + fontSize → availableFonts → config → defaults
   const selectedFont = availableFonts?.find(f => f.name === layoutData.fontFamily)
-  const fontConfig: Partial<LayoutConfig> = selectedFont ? {
-    bodyFont: selectedFont.bodyFont,
-    headingFont: selectedFont.headingFont || `bold ${selectedFont.bodyFont}`,
-    h1Font: selectedFont.headingFont ? selectedFont.headingFont.replace(/\d+px/, '32px') : `bold 32px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
-    h2Font: selectedFont.headingFont || `bold 24px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
-    h3Font: selectedFont.headingFont ? selectedFont.headingFont.replace(/\d+px/, '20px') : `bold 20px ${selectedFont.bodyFont.replace(/^\d+px\s*/, '')}`,
-    ...(selectedFont.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
-    ...(selectedFont.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
-  } : {}
+  const baseFontFamily = selectedFont
+    ? selectedFont.bodyFont.replace(/^\d+px\s*/, '')
+    : DEFAULT_CONFIG.bodyFont.replace(/^\d+px\s*/, '')
+  const baseSize = layoutData.fontSize || 16
+  const fontConfig: Partial<LayoutConfig> = {
+    bodyFont: `${baseSize}px ${baseFontFamily}`,
+    headingFont: `bold ${baseSize}px ${baseFontFamily}`,
+    h1Font: `bold ${Math.round(baseSize * 2)}px ${baseFontFamily}`,
+    h2Font: `bold ${Math.round(baseSize * 1.5)}px ${baseFontFamily}`,
+    h3Font: `bold ${Math.round(baseSize * 1.25)}px ${baseFontFamily}`,
+    bodyLineHeight: Math.round(baseSize * 1.6),
+    h1LineHeight: Math.round(baseSize * 2 * 1.3),
+    h2LineHeight: Math.round(baseSize * 1.5 * 1.4),
+    h3LineHeight: Math.round(baseSize * 1.25 * 1.4),
+    ...(selectedFont?.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
+    ...(selectedFont?.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
+  }
   const cfg = { ...DEFAULT_CONFIG, ...config, ...fontConfig }
 
   // Helpers to read/write the currently editing breakpoint's data
@@ -164,12 +173,15 @@ export default function Editor({
     return url
   }
 
-  // Sync markdown text when entering write mode
+  // Sync markdown text from blocks only on initial mount (when blocks prop changes externally)
+  const blocksInitRef = useRef(true)
   useEffect(() => {
-    if (activeModes.has('write')) {
-      setMarkdownText(blocksToMarkdown(blocks))
+    if (blocksInitRef.current) {
+      blocksInitRef.current = false
+      return
     }
-  }, [activeModes])
+    // Only sync if blocks changed externally (not from our own editing)
+  }, [blocks])
 
   // Handle markdown text changes
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -191,6 +203,111 @@ export default function Editor({
   useEffect(() => {
     autoResizeTextarea()
   }, [markdownText, activeModes])
+
+  // Helper: update textarea via execCommand to preserve undo/redo stack
+  const replaceTextareaRange = useCallback((replaceStart: number, replaceEnd: number, replacement: string, cursorStart?: number, cursorEnd?: number) => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.focus()
+    ta.selectionStart = replaceStart
+    ta.selectionEnd = replaceEnd
+    // insertText preserves the native undo stack
+    document.execCommand('insertText', false, replacement)
+    if (cursorStart !== undefined) {
+      ta.selectionStart = cursorStart
+      ta.selectionEnd = cursorEnd ?? cursorStart
+    }
+  }, [])
+
+  // Markdown keyboard shortcuts
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const ta = e.currentTarget
+    const { selectionStart: start, selectionEnd: end, value } = ta
+    const hasSelection = start !== end
+    const selectedText = value.slice(start, end)
+
+    // Helper: wrap selection with markers (preserves undo)
+    const wrapSelection = (before: string, after: string) => {
+      e.preventDefault()
+      const replacement = before + selectedText + after
+      replaceTextareaRange(start, end, replacement, start + before.length, end + before.length)
+    }
+
+    // Cmd/Ctrl+B → bold
+    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      wrapSelection('**', '**')
+      return
+    }
+    // Cmd/Ctrl+I → italic
+    if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
+      wrapSelection('*', '*')
+      return
+    }
+    // Cmd/Ctrl+K → link
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault()
+      const linkText = hasSelection ? selectedText : 'link text'
+      const replacement = `[${linkText}](url)`
+      const urlStart = start + linkText.length + 3
+      replaceTextareaRange(start, end, replacement, urlStart, urlStart + 3)
+      return
+    }
+
+    // Wrap selection with typed character
+    if (hasSelection && ['*', '`', '~'].includes(e.key)) {
+      e.preventDefault()
+      if (e.key === '~') {
+        wrapSelection('~~', '~~')
+      } else {
+        wrapSelection(e.key, e.key)
+      }
+      return
+    }
+
+    // Tab / Shift+Tab for list indentation
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1
+      const lineEnd = value.indexOf('\n', start)
+      const lineEndPos = lineEnd === -1 ? value.length : lineEnd
+
+      if (e.shiftKey) {
+        // Unindent: remove 2 spaces from start of line
+        if (value.slice(lineStart, lineStart + 2) === '  ') {
+          replaceTextareaRange(lineStart, lineStart + 2, '', Math.max(lineStart, start - 2))
+        }
+      } else {
+        // Indent: add 2 spaces at start of line
+        replaceTextareaRange(lineStart, lineStart, '  ', start + 2)
+      }
+      return
+    }
+
+    // Enter: smart list continuation
+    if (e.key === 'Enter') {
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1
+      const currentLine = value.slice(lineStart, start)
+
+      const listMatch = currentLine.match(/^(\s*)([-*]|\d+\.)\s(.*)/)
+      if (listMatch) {
+        const [, indent, bullet, content] = listMatch
+
+        // Empty list item → break out of list
+        if (content.trim() === '') {
+          e.preventDefault()
+          replaceTextareaRange(lineStart, start, '\n', lineStart + 1)
+          return
+        }
+
+        // Continue list
+        e.preventDefault()
+        const nextBullet = bullet.match(/^\d+\./) ? `${parseInt(bullet) + 1}.` : bullet
+        const continuation = `\n${indent}${nextBullet} `
+        replaceTextareaRange(start, end, continuation, start + continuation.length)
+        return
+      }
+    }
+  }, [replaceTextareaRange])
 
   // Helper: find image element in LayoutView by index
   const findImageEl = (index: number): HTMLImageElement | null => {
@@ -425,6 +542,22 @@ export default function Editor({
               ))}
             </select>
           )}
+          {/* Font size selector */}
+          <select
+            value={layoutData.fontSize || 16}
+            onChange={(e) => onLayoutChange({ ...layoutData, fontSize: parseInt(e.target.value) })}
+            style={{
+              padding: '3px 6px', fontSize: 12, cursor: 'pointer',
+              background: 'transparent', color: '#6a4c93',
+              border: '1px solid #d4c5e8', borderRadius: 3,
+              outline: 'none',
+              width: 52,
+            }}
+          >
+            {[12, 14, 16, 18, 20, 22, 24].map(s => (
+              <option key={s} value={s}>{s}px</option>
+            ))}
+          </select>
           {/* Column controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Columns2 size={14} color="#6a4c93" />
@@ -473,21 +606,25 @@ export default function Editor({
               autoFocus
               value={markdownText}
               onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
               placeholder="Write your content here...&#10;&#10;Use ## for headings&#10;&#10;Separate paragraphs with blank lines"
+              spellCheck={false}
               style={{
                 width: '100%',
                 minHeight: 200,
-                padding: 20,
+                padding: '24px 32px',
                 border: 'none',
                 outline: 'none',
-                fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-                fontSize: 14,
-                lineHeight: '1.7',
-                color: '#333',
+                fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
+                fontSize: 18,
+                lineHeight: '1.75',
+                letterSpacing: '0.01em',
+                color: '#2c2c2c',
                 resize: 'none',
                 caretColor: '#502581',
                 boxSizing: 'border-box',
                 overflow: 'hidden',
+                tabSize: 2,
               }}
             />
           </div>
