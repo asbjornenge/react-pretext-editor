@@ -1,9 +1,9 @@
 import '@fontsource/jetbrains-mono'
 import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { Pen, LayoutGrid, Eye, Columns2, Plus, X } from 'lucide-react'
+import { Pen, LayoutGrid, Eye, Columns2, Plus, X, ALargeSmall } from 'lucide-react'
 import LayoutView from './LayoutView'
 import { parseMarkdown, blocksToMarkdown } from '../engine/markdown'
-import type { Block, FontOption, LayoutData, LayoutImage, LayoutBreakpoint, LayoutConfig } from '../types'
+import type { Block, FontOption, InitialCapOption, LayoutData, LayoutImage, LayoutBreakpoint, LayoutConfig } from '../types'
 
 type EditorMode = 'write' | 'layout'
 
@@ -15,6 +15,7 @@ interface EditorProps {
   resolveImageUrl?: (url: string, filename: string) => string
   config?: LayoutConfig
   availableFonts?: FontOption[]
+  availableInitialFonts?: InitialCapOption[]
   height?: number | string
   expandable?: boolean
   width?: number | string
@@ -37,6 +38,7 @@ export default function Editor({
   resolveImageUrl,
   config,
   availableFonts,
+  availableInitialFonts,
   height,
   expandable,
   width,
@@ -126,6 +128,11 @@ export default function Editor({
   const activeColumns = activeBp?.columns ?? layoutData.columns
   const activeFontFamily = activeBp?.fontFamily ?? layoutData.fontFamily
   const activeFontSize = activeBp?.fontSize ?? layoutData.fontSize
+  const activeInitialCap = activeBp?.initialCap ?? layoutData.initialCap ?? false
+  const activeInitialCapFont = activeBp?.initialCapFont ?? layoutData.initialCapFont
+  const activeInitialCapSize = activeBp?.initialCapSize ?? layoutData.initialCapSize
+  const activeInitialCapOffsetX = activeBp?.initialCapOffsetX ?? layoutData.initialCapOffsetX ?? 0
+  const activeInitialCapOffsetY = activeBp?.initialCapOffsetY ?? layoutData.initialCapOffsetY ?? 0
 
   // Update images for the active breakpoint
   const updateActiveImages = (newImages: LayoutImage[], extraLayout?: Partial<LayoutData>) => {
@@ -158,6 +165,11 @@ export default function Editor({
       editorWidth: maxWidth,
       fontFamily: activeFontFamily,
       fontSize: activeFontSize,
+      initialCap: activeInitialCap,
+      initialCapFont: activeInitialCapFont,
+      initialCapSize: activeInitialCapSize,
+      initialCapOffsetX: activeInitialCapOffsetX,
+      initialCapOffsetY: activeInitialCapOffsetY,
     }
     const newBps = [...(layoutData.breakpoints || []), newBp]
     onLayoutChange({ ...layoutData, breakpoints: newBps })
@@ -579,6 +591,114 @@ export default function Editor({
               <option key={s} value={s}>{s}px</option>
             ))}
           </select>
+          {/* Initial cap controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <button type="button" title="Initial cap"
+              onClick={() => {
+                const val = !activeInitialCap
+                if (editingBreakpoint === -1) {
+                  onLayoutChange({ ...layoutData, initialCap: val })
+                } else {
+                  const newBps = [...(layoutData.breakpoints || [])]
+                  newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCap: val }
+                  onLayoutChange({ ...layoutData, breakpoints: newBps })
+                }
+              }}
+              style={{
+                padding: '3px 6px', fontSize: 12, cursor: 'pointer',
+                background: activeInitialCap ? '#502581' : 'transparent',
+                color: activeInitialCap ? 'white' : '#6a4c93',
+                border: '1px solid #d4c5e8', borderRadius: 3,
+                fontWeight: activeInitialCap ? 600 : 400,
+                display: 'flex', alignItems: 'center', gap: 3,
+              }}>
+              <ALargeSmall size={14} />
+            </button>
+            {activeInitialCap && availableInitialFonts && availableInitialFonts.length > 0 && (
+              <select
+                value={activeInitialCapFont || ''}
+                onChange={(e) => {
+                  const val = e.target.value || undefined
+                  if (editingBreakpoint === -1) {
+                    onLayoutChange({ ...layoutData, initialCapFont: val })
+                  } else {
+                    const newBps = [...(layoutData.breakpoints || [])]
+                    newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCapFont: val }
+                    onLayoutChange({ ...layoutData, breakpoints: newBps })
+                  }
+                }}
+                style={{
+                  padding: '3px 4px', fontSize: 11, cursor: 'pointer',
+                  background: 'transparent', color: '#6a4c93',
+                  border: '1px solid #d4c5e8', borderRadius: 3,
+                  outline: 'none',
+                }}
+              >
+                <option value="">Default</option>
+                {availableInitialFonts.map(f => (
+                  <option key={f.name} value={f.name}>{f.name}</option>
+                ))}
+              </select>
+            )}
+            {activeInitialCap && (
+              <select
+                value={activeInitialCapSize || 96}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value)
+                  if (editingBreakpoint === -1) {
+                    onLayoutChange({ ...layoutData, initialCapSize: val })
+                  } else {
+                    const newBps = [...(layoutData.breakpoints || [])]
+                    newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCapSize: val }
+                    onLayoutChange({ ...layoutData, breakpoints: newBps })
+                  }
+                }}
+                style={{
+                  padding: '3px 4px', fontSize: 11, cursor: 'pointer',
+                  background: 'transparent', color: '#6a4c93',
+                  border: '1px solid #d4c5e8', borderRadius: 3,
+                  outline: 'none',
+                  width: 52,
+                }}
+              >
+                {[48, 64, 80, 96, 112, 128].map(s => (
+                  <option key={s} value={s}>{s}px</option>
+                ))}
+              </select>
+            )}
+            {activeInitialCap && (
+              <>
+                <label style={{ fontSize: 10, color: '#6a4c93' }}>x</label>
+                <input type="number" value={activeInitialCapOffsetX}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0
+                    if (editingBreakpoint === -1) {
+                      onLayoutChange({ ...layoutData, initialCapOffsetX: val })
+                    } else {
+                      const newBps = [...(layoutData.breakpoints || [])]
+                      newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCapOffsetX: val }
+                      onLayoutChange({ ...layoutData, breakpoints: newBps })
+                    }
+                  }}
+                  style={{ width: 44, padding: '2px 4px', fontSize: 11, border: '1px solid #d4c5e8', borderRadius: 3, color: '#6a4c93', background: 'transparent', outline: 'none', textAlign: 'center' }}
+                />
+                <label style={{ fontSize: 10, color: '#6a4c93' }}>y</label>
+                <input type="number" value={activeInitialCapOffsetY}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0
+                    if (editingBreakpoint === -1) {
+                      onLayoutChange({ ...layoutData, initialCapOffsetY: val })
+                    } else {
+                      const newBps = [...(layoutData.breakpoints || [])]
+                      newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCapOffsetY: val }
+                      onLayoutChange({ ...layoutData, breakpoints: newBps })
+                    }
+                  }}
+                  style={{ width: 44, padding: '2px 4px', fontSize: 11, border: '1px solid #d4c5e8', borderRadius: 3, color: '#6a4c93', background: 'transparent', outline: 'none', textAlign: 'center' }}
+                />
+              </>
+            )}
+          </div>
           {/* Column controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Columns2 size={14} color="#6a4c93" />
@@ -733,9 +853,10 @@ export default function Editor({
             <LayoutView
               containerRef={layoutViewRef}
               blocks={blocks}
-              layout={editingBreakpoint === -1 ? { ...layoutData, breakpoints: undefined } : { images: activeImages, columns: activeColumns, editorWidth: layoutData.breakpoints?.[editingBreakpoint]?.editorWidth, fontFamily: activeFontFamily, fontSize: activeFontSize }}
+              layout={editingBreakpoint === -1 ? { ...layoutData, breakpoints: undefined } : { images: activeImages, columns: activeColumns, editorWidth: layoutData.breakpoints?.[editingBreakpoint]?.editorWidth, fontFamily: activeFontFamily, fontSize: activeFontSize, initialCap: activeInitialCap, initialCapFont: activeInitialCapFont, initialCapSize: activeInitialCapSize, initialCapOffsetX: activeInitialCapOffsetX, initialCapOffsetY: activeInitialCapOffsetY }}
               config={config}
               availableFonts={availableFonts}
+              availableInitialFonts={availableInitialFonts}
               resolveImageUrl={resolveImageUrl}
               editorMode={previewMode ? undefined : {
                 selectedImageIndex,

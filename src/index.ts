@@ -9,6 +9,7 @@ export type {
   Block,
   TextSegment,
   FontOption,
+  InitialCapOption,
   PolygonPoint,
   MediaItem,
 } from './types'

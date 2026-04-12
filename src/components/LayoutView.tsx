@@ -1,18 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { usePretextEngine } from '../engine/pretext-loader'
 import { layoutBlocks, prepareImageData } from '../engine/layout'
-import type { Block, TextSegment, FontOption, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
+import type { Block, TextSegment, FontOption, InitialCapOption, LayoutData, LayoutImage, LayoutConfig, PolygonPoint } from '../types'
 import type { LayoutElement } from '../engine/layout'
 
 // Resolve which breakpoint applies for a given container width
-export function resolveBreakpoint(layout: LayoutData, containerWidth: number): {
-  images: LayoutImage[]
-  columns?: number
-  editorWidth?: number
-  fontFamily?: string
-  fontSize?: number
-  breakpointIndex: number  // -1 = default
-} {
+export function resolveBreakpoint(layout: LayoutData, containerWidth: number) {
   if (layout.breakpoints && layout.breakpoints.length > 0) {
     const sorted = [...layout.breakpoints]
       .map((bp, idx) => ({ bp, idx }))
@@ -23,12 +16,23 @@ export function resolveBreakpoint(layout: LayoutData, containerWidth: number): {
           images: bp.images, columns: bp.columns, editorWidth: bp.editorWidth,
           fontFamily: bp.fontFamily ?? layout.fontFamily,
           fontSize: bp.fontSize ?? layout.fontSize,
+          initialCap: bp.initialCap ?? layout.initialCap,
+          initialCapFont: bp.initialCapFont ?? layout.initialCapFont,
+          initialCapSize: bp.initialCapSize ?? layout.initialCapSize,
+          initialCapOffsetX: bp.initialCapOffsetX ?? layout.initialCapOffsetX,
+          initialCapOffsetY: bp.initialCapOffsetY ?? layout.initialCapOffsetY,
           breakpointIndex: idx,
         }
       }
     }
   }
-  return { images: layout.images, columns: layout.columns, editorWidth: layout.editorWidth, fontFamily: layout.fontFamily, fontSize: layout.fontSize, breakpointIndex: -1 }
+  return {
+    images: layout.images, columns: layout.columns, editorWidth: layout.editorWidth,
+    fontFamily: layout.fontFamily, fontSize: layout.fontSize,
+    initialCap: layout.initialCap, initialCapFont: layout.initialCapFont, initialCapSize: layout.initialCapSize,
+    initialCapOffsetX: layout.initialCapOffsetX, initialCapOffsetY: layout.initialCapOffsetY,
+    breakpointIndex: -1,
+  }
 }
 
 export interface EditorMode {
@@ -48,6 +52,7 @@ interface LayoutViewProps {
   layout: LayoutData
   config?: LayoutConfig
   availableFonts?: FontOption[]
+  availableInitialFonts?: InitialCapOption[]
   resolveImageUrl?: (url: string, filename: string) => string
   className?: string
   style?: React.CSSProperties
@@ -60,6 +65,7 @@ export default function LayoutView({
   layout,
   config,
   availableFonts,
+  availableInitialFonts,
   resolveImageUrl,
   className,
   style,
@@ -72,8 +78,13 @@ export default function LayoutView({
   const [result, setResult] = useState<{ elements: LayoutElement[]; totalHeight: number; activeImages: LayoutImage[] } | null>(null)
   const [fontsReady, setFontsReady] = useState(false)
 
+  const [fontGeneration, setFontGeneration] = useState(0)
   useEffect(() => {
     document.fonts.ready.then(() => setFontsReady(true))
+    // Listen for font loading events (for lazily-loaded @font-face fonts)
+    const handler = () => setFontGeneration(g => g + 1)
+    document.fonts.addEventListener('loadingdone', handler)
+    return () => document.fonts.removeEventListener('loadingdone', handler)
   }, [])
 
   const render = useCallback(() => {
@@ -106,11 +117,42 @@ export default function LayoutView({
       ...(selectedFont?.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
       ...(selectedFont?.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
     }
-    const cfg = { dropCap: false, ...config, ...fontOverrides, columns: bp.columns || config?.columns || 1 }
+    // Resolve initial cap font
+    const initialCapEnabled = bp.initialCap || false
+    const initialCapFontOption = availableInitialFonts?.find(f => f.name === bp.initialCapFont)
+    const initialCapFontFamily = initialCapFontOption?.fontFamily || 'serif'
+    const initialCapSize = bp.initialCapSize || 96
+    const dropCapFont = `${initialCapSize}px ${initialCapFontFamily}`
 
-    const layoutResult = layoutBlocks(blocks, imgData, containerWidth, engine, cfg)
+    const cfg = {
+      ...config,
+      ...fontOverrides,
+      dropCap: initialCapEnabled,
+      dropCapFont,
+      dropCapOffsetX: bp.initialCapOffsetX ?? 0,
+      dropCapOffsetY: bp.initialCapOffsetY ?? 0,
+      columns: bp.columns || config?.columns || 1,
+    }
+
+    const measureDropCap = (char: string, font: string) => {
+      const el = document.createElement('span')
+      el.textContent = char
+      el.style.cssText = `position:absolute;font:${font};visibility:hidden;line-height:1;`
+      containerRef.current!.appendChild(el)
+      const rect = el.getBoundingClientRect()
+      containerRef.current!.removeChild(el)
+      return { width: rect.width, height: rect.height }
+    }
+
+    // Ensure drop cap font is loaded before measuring
+    if (initialCapEnabled && dropCapFont && !document.fonts.check(dropCapFont)) {
+      document.fonts.load(dropCapFont).then(() => render())
+      return
+    }
+
+    const layoutResult = layoutBlocks(blocks, imgData, containerWidth, engine, cfg, measureDropCap)
     setResult({ ...layoutResult, activeImages: bp.images || [] })
-  }, [engine, blocks, layout, config, fontsReady])
+  }, [engine, blocks, layout, config, availableFonts, availableInitialFonts, fontsReady, fontGeneration])
 
   useEffect(() => {
     render()
@@ -201,6 +243,24 @@ export default function LayoutView({
       {result && (
         <div style={{ position: 'relative', height: result.totalHeight }}>
           {result.elements.map((el, i) => {
+            if (el.type === 'dropCap') {
+              return (
+                <span
+                  key={`dropcap-${i}`}
+                  style={{
+                    position: 'absolute',
+                    font: el.font,
+                    color: '#502581',
+                    left: el.x,
+                    top: el.y,
+                    lineHeight: 1,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {el.char}
+                </span>
+              )
+            }
             if (el.type === 'text') {
               return (
                 <span

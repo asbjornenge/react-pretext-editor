@@ -16,23 +16,31 @@ export interface LayoutImage {
 }
 
 export interface LayoutBreakpoint {
-  maxWidth: number  // Apply when container width <= maxWidth
+  maxWidth: number
   name?: string
   images: LayoutImage[]
   columns?: number
   editorWidth?: number
   fontFamily?: string
   fontSize?: number
+  initialCap?: boolean
+  initialCapFont?: string
+  initialCapSize?: number
+  initialCapOffsetX?: number
+  initialCapOffsetY?: number
 }
 
 export interface LayoutData {
-  // Default (largest) layout
   images: LayoutImage[]
   editorWidth?: number
   columns?: number
-  fontFamily?: string   // Reference to selected FontOption.name
-  fontSize?: number     // Base body font size in px (default 16)
-  // Optional smaller breakpoint overrides
+  fontFamily?: string
+  fontSize?: number
+  initialCap?: boolean
+  initialCapFont?: string
+  initialCapSize?: number
+  initialCapOffsetX?: number
+  initialCapOffsetY?: number
   breakpoints?: LayoutBreakpoint[]
 }
 
@@ -58,9 +66,14 @@ export interface Block {
 export interface FontOption {
   name: string
   bodyFont: string
-  headingFont?: string   // Override for headings (defaults to bold version of bodyFont)
+  headingFont?: string
   bodyLineHeight?: number
   headingLineHeight?: number
+}
+
+export interface InitialCapOption {
+  name: string
+  fontFamily: string  // CSS font-family, e.g. "FloralCapitals, serif"
 }
 
 export interface LayoutConfig {
@@ -78,6 +91,8 @@ export interface LayoutConfig {
   blockGap?: number
   imgPadding?: number
   dropCap?: boolean
+  dropCapOffsetX?: number
+  dropCapOffsetY?: number
   columns?: number
   minColumnWidth?: number
 }

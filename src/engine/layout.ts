@@ -15,6 +15,8 @@ const DEFAULT_CONFIG: Required<LayoutConfig> = {
   blockGap: 16,
   imgPadding: 10,
   dropCap: false,
+  dropCapOffsetX: 0,
+  dropCapOffsetY: 0,
   columns: 1,
   minColumnWidth: 300,
 }
@@ -260,10 +262,12 @@ export function layoutBlocks(
     const elements: LayoutElement[] = []
 
     // Render a text block into elements, returns final y
+    // indent: left indent in px. indentUntilY: indent only applies while y < this value (Infinity = always)
     const renderTextBlock = (
       text: string, font: string, lineHeight: number, indent: number,
       colImgs: ImageData[], colX: number, startY: number,
       colIdx: number, blockIdx: number, segments?: TextSegment[],
+      indentUntilY: number = Infinity,
     ): { y: number; cursor: any; done: boolean; overflow: boolean; charOffset: number } => {
       const prepared = engine.prepareWithSegments(text, font)
       let cursor = { segmentIndex: 0, graphemeIndex: 0 }
@@ -274,18 +278,18 @@ export function layoutBlocks(
         if (numColumns > 1 && y >= colHeight && colIdx < numColumns - 1) {
           return { y, cursor, done: false, overflow: true, charOffset }
         }
+        const currentIndent = y < indentUntilY ? indent : 0
         const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding)
         if (slots.length === 0) { y += lineHeight; continue }
-        // Filter slots to those wide enough after applying indent
         const usableSlots = slots.filter(slot => {
-          const w = Math.min(slot.right, columnWidth) - Math.max(slot.left, indent)
+          const w = Math.min(slot.right, columnWidth) - Math.max(slot.left, currentIndent)
           return w >= 30
         })
         if (usableSlots.length === 0) { y += lineHeight; continue }
         let renderedOnLine = false
         for (const slot of usableSlots) {
-          const slotWidth = Math.min(slot.right, columnWidth) - Math.max(slot.left, indent)
-          const adjustedLeft = Math.max(slot.left, indent)
+          const slotWidth = Math.min(slot.right, columnWidth) - Math.max(slot.left, currentIndent)
+          const adjustedLeft = Math.max(slot.left, currentIndent)
           const line = engine.layoutNextLine(prepared, cursor, slotWidth)
           if (!line) {
             if (renderedOnLine) y += lineHeight
@@ -313,6 +317,7 @@ export function layoutBlocks(
     let currentBlockIdx = 0
     let currentCursor: any = null
     let maxColumnY = 0
+    let isFirstParagraph = true
 
     columnLoop:
     for (let c = 0; c < numColumns; c++) {
@@ -342,11 +347,48 @@ export function layoutBlocks(
             break
           }
           case 'paragraph': {
-            const result = renderTextBlock(
-              block.text, cfg.bodyFont, cfg.bodyLineHeight, 0, colImgs, colX, y, c, currentBlockIdx, block.segments
-            )
-            y = result.y
-            if (result.overflow) { currentCursor = result.cursor; maxColumnY = Math.max(maxColumnY, y); continue columnLoop }
+            // Drop cap for first paragraph
+            if (cfg.dropCap && isFirstParagraph && block.text.length > 0 && _measureDropCap) {
+              isFirstParagraph = false
+              const dcChar = block.text[0]
+              const dc = _measureDropCap(dcChar, cfg.dropCapFont)
+              const dcWidth = dc.width + 8
+              const dcHeight = dc.height * 0.78
+              const dcOffsetX = cfg.dropCapOffsetX
+              const dcOffsetY = cfg.dropCapOffsetY
+              if (emit) {
+                elements.push({
+                  type: 'dropCap',
+                  char: dcChar,
+                  x: colX + dcOffsetX,
+                  y: y + dcOffsetY,
+                  font: cfg.dropCapFont,
+                  blockIndex: currentBlockIdx,
+                })
+              }
+              // Render remaining text with indent only within drop cap height
+              const restText = block.text.slice(1)
+              const restSegments = block.segments ? (() => {
+                const segs = [...block.segments]
+                if (segs.length > 0 && segs[0].text.length > 0) {
+                  segs[0] = { ...segs[0], text: segs[0].text.slice(1) }
+                }
+                return segs
+              })() : undefined
+              const dcBottom = y + dcHeight
+              const result = renderTextBlock(
+                restText, cfg.bodyFont, cfg.bodyLineHeight, dcWidth, colImgs, colX, y, c, currentBlockIdx, restSegments, dcBottom
+              )
+              y = result.y
+              if (result.overflow) { currentCursor = result.cursor; maxColumnY = Math.max(maxColumnY, y); continue columnLoop }
+            } else {
+              if (block.type === 'paragraph') isFirstParagraph = false
+              const result = renderTextBlock(
+                block.text, cfg.bodyFont, cfg.bodyLineHeight, 0, colImgs, colX, y, c, currentBlockIdx, block.segments
+              )
+              y = result.y
+              if (result.overflow) { currentCursor = result.cursor; maxColumnY = Math.max(maxColumnY, y); continue columnLoop }
+            }
             break
           }
           case 'list': {

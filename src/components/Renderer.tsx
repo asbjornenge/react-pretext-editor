@@ -1,4 +1,4 @@
-import type { Block, FontOption, LayoutData, LayoutConfig } from '../types'
+import type { Block, FontOption, InitialCapOption, LayoutData, LayoutConfig } from '../types'
 import LayoutView from './LayoutView'
 
 interface RendererProps {
@@ -6,6 +6,7 @@ interface RendererProps {
   layout: LayoutData
   config?: LayoutConfig
   availableFonts?: FontOption[]
+  availableInitialFonts?: InitialCapOption[]
   resolveImageUrl?: (url: string, filename: string) => string
   className?: string
   style?: React.CSSProperties

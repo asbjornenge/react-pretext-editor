@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Editor, parseMarkdown } from '../../src'
-import type { Block, FontOption, LayoutData } from '../../src/types'
+import type { Block, FontOption, InitialCapOption, LayoutData } from '../../src/types'
 import { exampleMarkdown, exampleLayout, exampleMedia } from './example-data'
 
 const fonts: FontOption[] = [
@@ -8,6 +8,10 @@ const fonts: FontOption[] = [
   { name: 'Georgia', bodyFont: '16px Georgia, serif', bodyLineHeight: 28 },
   { name: 'System', bodyFont: '16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', bodyLineHeight: 26 },
   { name: 'Mono', bodyFont: '14px "SF Mono", "Fira Code", Consolas, monospace', bodyLineHeight: 22 },
+]
+
+const initialFonts: InitialCapOption[] = [
+  { name: 'Floral Capitals', fontFamily: 'FloralCapitals, serif' },
 ]
 
 export default function App() {
@@ -26,6 +30,7 @@ export default function App() {
         onBlocksChange={setBlocks}
         images={exampleMedia}
         availableFonts={fonts}
+        availableInitialFonts={initialFonts}
         width={1000}
         expandable
       />
