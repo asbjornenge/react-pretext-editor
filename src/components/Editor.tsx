@@ -363,14 +363,14 @@ export default function Editor({
     setSelectedImageIndex(index)
     e.preventDefault()
     e.stopPropagation()
-  }, [layoutData, drawingPolygonIndex])
+  }, [activeImages, drawingPolygonIndex])
 
   // Called from LayoutView when a resize handle is mousedowned
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, index: number) => {
     resizeRef.current = { imageIndex: index, startX: e.clientX, origWidth: activeImages[index].width }
     e.preventDefault()
     e.stopPropagation()
-  }, [layoutData])
+  }, [activeImages])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (dragRef.current) {
