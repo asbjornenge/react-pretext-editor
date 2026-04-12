@@ -21,6 +21,8 @@ export interface LayoutBreakpoint {
   images: LayoutImage[]
   columns?: number
   editorWidth?: number
+  fontFamily?: string
+  fontSize?: number
 }
 
 export interface LayoutData {

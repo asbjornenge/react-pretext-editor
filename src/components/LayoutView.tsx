@@ -9,20 +9,26 @@ export function resolveBreakpoint(layout: LayoutData, containerWidth: number): {
   images: LayoutImage[]
   columns?: number
   editorWidth?: number
+  fontFamily?: string
+  fontSize?: number
   breakpointIndex: number  // -1 = default
 } {
   if (layout.breakpoints && layout.breakpoints.length > 0) {
-    // Sort by maxWidth ascending so we pick the smallest matching
     const sorted = [...layout.breakpoints]
       .map((bp, idx) => ({ bp, idx }))
       .sort((a, b) => a.bp.maxWidth - b.bp.maxWidth)
     for (const { bp, idx } of sorted) {
       if (containerWidth <= bp.maxWidth) {
-        return { images: bp.images, columns: bp.columns, editorWidth: bp.editorWidth, breakpointIndex: idx }
+        return {
+          images: bp.images, columns: bp.columns, editorWidth: bp.editorWidth,
+          fontFamily: bp.fontFamily ?? layout.fontFamily,
+          fontSize: bp.fontSize ?? layout.fontSize,
+          breakpointIndex: idx,
+        }
       }
     }
   }
-  return { images: layout.images, columns: layout.columns, editorWidth: layout.editorWidth, breakpointIndex: -1 }
+  return { images: layout.images, columns: layout.columns, editorWidth: layout.editorWidth, fontFamily: layout.fontFamily, fontSize: layout.fontSize, breakpointIndex: -1 }
 }
 
 export interface EditorMode {
@@ -79,13 +85,14 @@ export default function LayoutView({
     const scale = containerWidth / editorWidth
     const imgData = prepareImageData(bp.images || [], scale, containerWidth)
 
-    // Resolve font from layout.fontFamily + fontSize
-    const selectedFont = availableFonts?.find(f => f.name === layout.fontFamily)
+    // Resolve font from breakpoint's fontFamily + fontSize
+    const bpFontFamily = bp.fontFamily
+    const selectedFont = availableFonts?.find(f => f.name === bpFontFamily)
     const DEFAULT_FONT_FAMILY = 'Lato, sans-serif'
     const baseFontFamily = selectedFont
       ? selectedFont.bodyFont.replace(/^\d+px\s*/, '')
       : DEFAULT_FONT_FAMILY
-    const baseSize = layout.fontSize || 16
+    const baseSize = bp.fontSize || 16
     const fontOverrides: Partial<LayoutConfig> = {
       bodyFont: `${baseSize}px ${baseFontFamily}`,
       headingFont: `bold ${baseSize}px ${baseFontFamily}`,

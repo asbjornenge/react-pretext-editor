@@ -97,7 +97,9 @@ export default function Editor({
 
   const layoutData: LayoutData = layout || { images: [] }
 
-  // Resolve font from layoutData.fontFamily + fontSize → availableFonts → config → defaults
+  // Resolve font from active breakpoint's fontFamily + fontSize → availableFonts → config → defaults
+  // (activeFontFamily/activeFontSize are defined below, but we need cfg first — use layoutData directly here,
+  // then override per-breakpoint in the LayoutView via its own resolution)
   const selectedFont = availableFonts?.find(f => f.name === layoutData.fontFamily)
   const baseFontFamily = selectedFont
     ? selectedFont.bodyFont.replace(/^\d+px\s*/, '')
@@ -119,12 +121,11 @@ export default function Editor({
   const cfg = { ...DEFAULT_CONFIG, ...config, ...fontConfig }
 
   // Helpers to read/write the currently editing breakpoint's data
-  const activeImages: LayoutImage[] = editingBreakpoint === -1
-    ? layoutData.images
-    : (layoutData.breakpoints?.[editingBreakpoint]?.images || [])
-  const activeColumns = editingBreakpoint === -1
-    ? layoutData.columns
-    : layoutData.breakpoints?.[editingBreakpoint]?.columns
+  const activeBp = editingBreakpoint === -1 ? null : layoutData.breakpoints?.[editingBreakpoint]
+  const activeImages: LayoutImage[] = activeBp?.images || layoutData.images
+  const activeColumns = activeBp?.columns ?? layoutData.columns
+  const activeFontFamily = activeBp?.fontFamily ?? layoutData.fontFamily
+  const activeFontSize = activeBp?.fontSize ?? layoutData.fontSize
 
   // Update images for the active breakpoint
   const updateActiveImages = (newImages: LayoutImage[], extraLayout?: Partial<LayoutData>) => {
@@ -152,9 +153,11 @@ export default function Editor({
     const newBp: LayoutBreakpoint = {
       maxWidth,
       name,
-      images: layoutData.images.map(img => ({ ...img })),
-      columns: layoutData.columns,
+      images: activeImages.map(img => ({ ...img })),
+      columns: activeColumns,
       editorWidth: maxWidth,
+      fontFamily: activeFontFamily,
+      fontSize: activeFontSize,
     }
     const newBps = [...(layoutData.breakpoints || []), newBp]
     onLayoutChange({ ...layoutData, breakpoints: newBps })
@@ -527,8 +530,17 @@ export default function Editor({
           {/* Font selector */}
           {availableFonts && availableFonts.length > 0 && (
             <select
-              value={layoutData.fontFamily || ''}
-              onChange={(e) => onLayoutChange({ ...layoutData, fontFamily: e.target.value || undefined })}
+              value={activeFontFamily || ''}
+              onChange={(e) => {
+                const val = e.target.value || undefined
+                if (editingBreakpoint === -1) {
+                  onLayoutChange({ ...layoutData, fontFamily: val })
+                } else {
+                  const newBps = [...(layoutData.breakpoints || [])]
+                  newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], fontFamily: val }
+                  onLayoutChange({ ...layoutData, breakpoints: newBps })
+                }
+              }}
               style={{
                 padding: '3px 6px', fontSize: 12, cursor: 'pointer',
                 background: 'transparent', color: '#6a4c93',
@@ -544,8 +556,17 @@ export default function Editor({
           )}
           {/* Font size selector */}
           <select
-            value={layoutData.fontSize || 16}
-            onChange={(e) => onLayoutChange({ ...layoutData, fontSize: parseInt(e.target.value) })}
+            value={activeFontSize || 16}
+            onChange={(e) => {
+              const val = parseInt(e.target.value)
+              if (editingBreakpoint === -1) {
+                onLayoutChange({ ...layoutData, fontSize: val })
+              } else {
+                const newBps = [...(layoutData.breakpoints || [])]
+                newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], fontSize: val }
+                onLayoutChange({ ...layoutData, breakpoints: newBps })
+              }
+            }}
             style={{
               padding: '3px 6px', fontSize: 12, cursor: 'pointer',
               background: 'transparent', color: '#6a4c93',
@@ -712,7 +733,7 @@ export default function Editor({
             <LayoutView
               containerRef={layoutViewRef}
               blocks={blocks}
-              layout={editingBreakpoint === -1 ? { ...layoutData, breakpoints: undefined } : { images: activeImages, columns: activeColumns, editorWidth: layoutData.breakpoints?.[editingBreakpoint]?.editorWidth, fontFamily: layoutData.fontFamily }}
+              layout={editingBreakpoint === -1 ? { ...layoutData, breakpoints: undefined } : { images: activeImages, columns: activeColumns, editorWidth: layoutData.breakpoints?.[editingBreakpoint]?.editorWidth, fontFamily: activeFontFamily, fontSize: activeFontSize }}
               config={config}
               availableFonts={availableFonts}
               resolveImageUrl={resolveImageUrl}
