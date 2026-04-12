@@ -356,31 +356,51 @@ export default function LayoutView({
               const isSelected = isEditor && editorMode!.selectedImageIndex === imageIndex
               const isDrawingPoly = isEditor && editorMode!.drawingPolygonIndex === imageIndex
 
-              // In editor mode, don't apply clip-path (so user can click anywhere on image)
-              const clipPath = !isEditor && el.polygon && el.polygon.length >= 3
-                ? `polygon(${el.polygon.map((p: { x: number; y: number }) => `${p.x * 100}% ${p.y * 100}%`).join(', ')})`
+              const hasPolygon = el.polygon && el.polygon.length >= 3
+              const clipPath = hasPolygon
+                ? `polygon(${el.polygon!.map((p: { x: number; y: number }) => `${p.x * 100}% ${p.y * 100}%`).join(', ')})`
                 : undefined
 
               const cursor = isEditor ? (isDrawingPoly ? 'crosshair' : 'grab') : undefined
 
               return (
-                <img
-                  key={`img-${i}`}
-                  src={src}
-                  alt={el.alt}
-                  data-image-index={imageIndex}
-                  onMouseDown={isEditor ? (e) => editorMode!.onImageMouseDown?.(e, imageIndex) : undefined}
-                  style={{
-                    position: 'absolute',
-                    left: el.x,
-                    top: el.y,
-                    width: el.width,
-                    border: isEditor ? `2px solid ${isSelected ? '#502581' : 'transparent'}` : 'none',
-                    borderRadius: 4,
-                    clipPath,
-                    cursor,
-                  }}
-                />
+                <React.Fragment key={`img-${i}`}>
+                  {/* In editor mode: faded full image for click target + clipped image on top */}
+                  {isEditor && hasPolygon && (
+                    <img
+                      src={src}
+                      alt=""
+                      data-image-index={imageIndex}
+                      onMouseDown={(e) => editorMode!.onImageMouseDown?.(e, imageIndex)}
+                      style={{
+                        position: 'absolute',
+                        left: el.x,
+                        top: el.y,
+                        width: el.width,
+                        borderRadius: 4,
+                        opacity: 0.15,
+                        cursor,
+                      }}
+                    />
+                  )}
+                  <img
+                    src={src}
+                    alt={el.alt}
+                    data-image-index={imageIndex}
+                    onMouseDown={isEditor ? (e) => editorMode!.onImageMouseDown?.(e, imageIndex) : undefined}
+                    style={{
+                      position: 'absolute',
+                      left: el.x,
+                      top: el.y,
+                      width: el.width,
+                      border: isEditor ? `2px solid ${isSelected ? '#502581' : 'transparent'}` : 'none',
+                      borderRadius: 4,
+                      clipPath,
+                      cursor,
+                      pointerEvents: isEditor && hasPolygon ? 'none' : undefined,
+                    }}
+                  />
+                </React.Fragment>
               )
             }
             return null
