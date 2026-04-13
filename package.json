@@ -3,12 +3,20 @@
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "files": [
     "dist"
   ],
+  "license": "MIT",
   "scripts": {
-    "build": "vite build",
+    "build": "tsc --declaration --emitDeclarationOnly --outDir dist && vite build",
     "dev": "cd test-app && vite"
   },
   "peerDependencies": {
