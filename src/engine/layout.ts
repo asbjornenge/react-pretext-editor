@@ -119,7 +119,8 @@ export function getBlockedInterval(
       }
     }
     if (minX === Infinity) return rectFallback
-    return { left: minX - imgPadding, right: maxX + imgPadding }
+    // Less padding on the left (text ragged-right edge makes it look gapier)
+    return { left: minX - imgPadding * 0.4, right: maxX + imgPadding }
   }
 
   return rectFallback
