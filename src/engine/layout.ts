@@ -48,7 +48,6 @@ export interface LayoutElement {
   alt?: string
   polygon?: PolygonPoint[]
   blockIndex?: number
-  wordIndex?: number
   segments?: TextSegment[]   // Rich text segments for inline formatting
   charOffset?: number        // Character offset into block's text where this line starts
   language?: string          // For code blocks
@@ -57,35 +56,6 @@ export interface LayoutElement {
 export interface LayoutResult {
   elements: LayoutElement[]
   totalHeight: number
-}
-
-export function extractBlocks(node: any): Block[] {
-  if (!node || !node.children) return []
-  return node.children
-    .map((child: any) => {
-      const text = (child.children || []).map((c: any) => c.text || '').join('')
-      return {
-        type: child.type === 'heading' ? 'heading' : 'paragraph',
-        text,
-        tag: child.tag || 'p',
-      }
-    })
-    .filter((b: any) => b.text.length > 0)
-}
-
-export function countWordsInText(str: string, upTo: number): number {
-  let count = 0
-  let inWord = false
-  for (let i = 0; i < Math.min(upTo, str.length); i++) {
-    const c = str.charCodeAt(i)
-    if (c === 32 || c === 9 || c === 10 || c === 13) {
-      if (inWord) { count++; inWord = false }
-    } else {
-      inWord = true
-    }
-  }
-  if (inWord) count++
-  return count
 }
 
 export function getBlockedInterval(
@@ -150,7 +120,7 @@ export function getSlots(
   return slots.filter(s => (s.right - s.left) > 30)
 }
 
-export function prepareImageData(images: LayoutImage[], scale: number, _containerWidth?: number): ImageData[] {
+export function prepareImageData(images: LayoutImage[], scale: number): ImageData[] {
   // Use sqrt scaling for image width — images shrink slower than text
   const imgScale = scale < 1 ? Math.sqrt(scale) : scale
   return images.map((img, i) => ({

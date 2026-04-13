@@ -1,4 +1,4 @@
-import type { LayoutData, MediaItem } from '../../src/types'
+import type { LayoutData } from '../../src/types'
 
 export const exampleMarkdown = `Hei, kaffeelskere! Vi i **Bøllefrø** er stolte av å lansere bloggen vår. Her vil vi dele alt fra bryggeguider og kaffetips til historier om bønnene våre og folkene bak dem. Vi har jobbet lenge med å finne de beste bønnene fra små gårder rundt om i verden, og nå vil vi endelig dele reisen vår med dere.
 
@@ -74,30 +74,3 @@ export const exampleLayout: LayoutData = {
     },
   ],
 }
-
-export const exampleMedia: MediaItem[] = [
-  {
-    id: 3,
-    filename: 'chemex-brygging.jpeg',
-    url: `/images/chemex-brygging.jpeg`,
-    alt: 'Chemex brygging',
-    width: 543,
-    height: 550,
-  },
-  {
-    id: 4,
-    filename: 'chemex-kaffe.jpeg',
-    url: `/images/chemex-kaffe.jpeg`,
-    alt: 'Chemex kaffe',
-    width: 734,
-    height: 1160,
-  },
-  {
-    id: 5,
-    filename: 'javaccino.jpeg',
-    url: `/images/javaccino.jpeg`,
-    alt: 'Javaccino kaffe illustrasjon',
-    width: 564,
-    height: 402,
-  },
-]

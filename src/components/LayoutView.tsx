@@ -94,7 +94,7 @@ export default function LayoutView({
     const bp = resolveBreakpoint(layout, containerWidth)
     const editorWidth = bp.editorWidth || 700
     const scale = containerWidth / editorWidth
-    const imgData = prepareImageData(bp.images || [], scale, containerWidth)
+    const imgData = prepareImageData(bp.images || [], scale)
 
     // Resolve font from breakpoint's fontFamily + fontSize
     const bpFontFamily = bp.fontFamily

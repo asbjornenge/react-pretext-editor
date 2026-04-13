@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Editor, parseMarkdown } from '../../src'
 import type { Block, FontOption, InitialCapOption, LayoutData } from '../../src/types'
-import { exampleMarkdown, exampleLayout, exampleMedia } from './example-data'
+import { exampleMarkdown, exampleLayout } from './example-data'
 
 const fonts: FontOption[] = [
   { name: 'Lato', bodyFont: '16px Lato, sans-serif', bodyLineHeight: 26 },
@@ -28,7 +28,6 @@ export default function App() {
         layout={layout}
         onLayoutChange={setLayout}
         onBlocksChange={setBlocks}
-        images={exampleMedia}
         availableFonts={fonts}
         availableInitialFonts={initialFonts}
         width={1000}
