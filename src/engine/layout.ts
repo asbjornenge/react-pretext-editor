@@ -19,6 +19,7 @@ const DEFAULT_CONFIG: Required<LayoutConfig> = {
   dropCapOffsetY: 0,
   columns: 1,
   minColumnWidth: 300,
+  defaultMode: 'layout',
 }
 
 export interface ImageData {

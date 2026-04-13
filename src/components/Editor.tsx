@@ -53,7 +53,7 @@ export default function Editor({
   const [drawingPolygonIndex, setDrawingPolygonIndex] = useState<number | null>(null)
   const [previewMode, setPreviewMode] = useState(false)
   const [editingBreakpoint, setEditingBreakpoint] = useState<number>(-1) // -1 = default, else index into breakpoints
-  const [activeModes, setActiveModes] = useState<Set<EditorMode>>(new Set(['layout']))
+  const [activeModes, setActiveModes] = useState<Set<EditorMode>>(new Set([config?.defaultMode as EditorMode || 'layout']))
 
   const toggleMode = (m: EditorMode, shift: boolean) => {
     if (shift) {

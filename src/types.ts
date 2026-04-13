@@ -95,6 +95,7 @@ export interface LayoutConfig {
   dropCapOffsetY?: number
   columns?: number
   minColumnWidth?: number
+  defaultMode?: 'write' | 'layout'
 }
 
 export interface MediaItem {
