@@ -2,6 +2,8 @@
 
 A React layout editor and renderer for rich text with free image placement, polygon text wrapping, multi-column layouts, and responsive breakpoints. Built on [@chenglou/pretext](https://github.com/chenglou/pretext) for precise text layout.
 
+![react-pretext-editor screenshot](https://ipfs.asbjornenge.com/QmdhbrAHgVwW15uyFwvisxJgGjqJv76kfpUfVbsf7VB7Yf)
+
 ## Features
 
 - **Rich markdown editing** with bold, italic, links, lists, blockquotes, code blocks
