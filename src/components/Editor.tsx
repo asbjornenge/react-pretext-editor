@@ -1,5 +1,5 @@
 import '@fontsource/jetbrains-mono'
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { Pen, LayoutGrid, Eye, Columns2, Plus, X, ALargeSmall } from 'lucide-react'
 import LayoutView from './LayoutView'
 import { parseMarkdown, blocksToMarkdown } from '../engine/markdown'
@@ -30,7 +30,11 @@ const DEFAULT_CONFIG = {
   imgPadding: 10,
 }
 
-export default function Editor({
+export interface EditorRef {
+  addImage: (image: LayoutImage) => void
+}
+
+export default forwardRef<EditorRef, EditorProps>(function Editor({
   blocks,
   layout,
   onLayoutChange,
@@ -42,7 +46,7 @@ export default function Editor({
   height,
   expandable,
   width,
-}: EditorProps) {
+}: EditorProps, ref: React.Ref<EditorRef>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const layoutPanelRef = useRef<HTMLDivElement>(null)
   const layoutViewRef = useRef<HTMLDivElement>(null)
@@ -154,6 +158,13 @@ export default function Editor({
       onLayoutChange({ ...layoutData, breakpoints: newBps })
     }
   }
+
+  // Imperative API for external callers
+  useImperativeHandle(ref, () => ({
+    addImage: (image: LayoutImage) => {
+      updateActiveImages([...activeImages, image])
+    },
+  }), [activeImages, updateActiveImages])
 
   // Add a new breakpoint (clones current default)
   const addBreakpoint = (maxWidth: number, name: string) => {
@@ -918,4 +929,4 @@ export default function Editor({
       </div>
     </div>
   )
-}
+})
