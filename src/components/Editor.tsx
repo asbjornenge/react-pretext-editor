@@ -162,9 +162,18 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
   // Imperative API for external callers
   useImperativeHandle(ref, () => ({
     addImage: (image: LayoutImage) => {
-      updateActiveImages([...activeImages, image])
+      // Read current state directly to avoid stale closures
+      const bp = editingBreakpoint === -1 ? null : layoutData.breakpoints?.[editingBreakpoint]
+      const imgs = bp?.images || layoutData.images
+      if (editingBreakpoint === -1) {
+        onLayoutChange({ ...layoutData, images: [...imgs, image] })
+      } else {
+        const newBps = [...(layoutData.breakpoints || [])]
+        newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], images: [...imgs, image] }
+        onLayoutChange({ ...layoutData, breakpoints: newBps })
+      }
     },
-  }), [activeImages, updateActiveImages])
+  }), [layoutData, editingBreakpoint, onLayoutChange])
 
   // Add a new breakpoint (clones current default)
   const addBreakpoint = (maxWidth: number, name: string) => {
