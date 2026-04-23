@@ -96,20 +96,27 @@ export default function LayoutView({
     const scale = containerWidth / editorWidth
     const imgData = prepareImageData(bp.images || [], scale)
 
-    // Resolve font from breakpoint's fontFamily + fontSize
+    // Resolve font: use availableFonts if provided, else fall back to stored CSS strings
     const bpFontFamily = bp.fontFamily
     const selectedFont = availableFonts?.find(f => f.name === bpFontFamily)
     const DEFAULT_FONT_FAMILY = 'Lato, sans-serif'
-    const baseFontFamily = selectedFont
-      ? selectedFont.bodyFont.replace(/^\d+px\s*/, '')
-      : DEFAULT_FONT_FAMILY
+
+    let resolvedBodyFont: string
+    if (selectedFont) {
+      resolvedBodyFont = selectedFont.bodyFont.replace(/^\d+px\s*/, '')
+    } else if (layout.bodyFontCSS) {
+      resolvedBodyFont = layout.bodyFontCSS.replace(/^\d+px\s*/, '')
+    } else {
+      resolvedBodyFont = DEFAULT_FONT_FAMILY
+    }
+
     const baseSize = bp.fontSize || 16
     const fontOverrides: Partial<LayoutConfig> = {
-      bodyFont: `${baseSize}px ${baseFontFamily}`,
-      headingFont: `bold ${baseSize}px ${baseFontFamily}`,
-      h1Font: `bold ${Math.round(baseSize * 2)}px ${baseFontFamily}`,
-      h2Font: `bold ${Math.round(baseSize * 1.5)}px ${baseFontFamily}`,
-      h3Font: `bold ${Math.round(baseSize * 1.25)}px ${baseFontFamily}`,
+      bodyFont: `${baseSize}px ${resolvedBodyFont}`,
+      headingFont: `bold ${baseSize}px ${resolvedBodyFont}`,
+      h1Font: `bold ${Math.round(baseSize * 2)}px ${resolvedBodyFont}`,
+      h2Font: `bold ${Math.round(baseSize * 1.5)}px ${resolvedBodyFont}`,
+      h3Font: `bold ${Math.round(baseSize * 1.25)}px ${resolvedBodyFont}`,
       bodyLineHeight: Math.round(baseSize * 1.6),
       h1LineHeight: Math.round(baseSize * 2 * 1.3),
       h2LineHeight: Math.round(baseSize * 1.5 * 1.4),
@@ -117,12 +124,12 @@ export default function LayoutView({
       ...(selectedFont?.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
       ...(selectedFont?.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
     }
-    // Resolve initial cap font
+    // Resolve initial cap font: use availableInitialFonts if provided, else stored CSS
     const initialCapEnabled = bp.initialCap || false
     const initialCapFontOption = availableInitialFonts?.find(f => f.name === bp.initialCapFont)
-    const initialCapFontFamily = initialCapFontOption?.fontFamily || 'serif'
-    const initialCapSize = bp.initialCapSize || 96
-    const dropCapFont = `${initialCapSize}px ${initialCapFontFamily}`
+    const dropCapFont = initialCapFontOption
+      ? `${bp.initialCapSize || 96}px ${initialCapFontOption.fontFamily}`
+      : (layout.initialCapFontCSS || `${bp.initialCapSize || 96}px serif`)
 
     const cfg = {
       ...config,

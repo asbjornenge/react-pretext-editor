@@ -41,6 +41,9 @@ export interface LayoutData {
   initialCapSize?: number
   initialCapOffsetX?: number
   initialCapOffsetY?: number
+  // Resolved CSS font strings (set by Editor, used by Renderer when availableFonts not provided)
+  bodyFontCSS?: string
+  initialCapFontCSS?: string
   breakpoints?: LayoutBreakpoint[]
 }
 

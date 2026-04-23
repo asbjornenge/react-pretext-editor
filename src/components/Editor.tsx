@@ -103,6 +103,25 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
 
   const layoutData: LayoutData = layout || { images: [] }
 
+  // Wrap onLayoutChange to inject resolved CSS font strings
+  const emitLayoutChange = useCallback((newLayout: LayoutData) => {
+    // Resolve body font CSS
+    const font = availableFonts?.find(f => f.name === newLayout.fontFamily)
+    const family = font
+      ? font.bodyFont.replace(/^\d+px\s*/, '')
+      : DEFAULT_CONFIG.bodyFont.replace(/^\d+px\s*/, '')
+    const size = newLayout.fontSize || 16
+    const bodyFontCSS = `${size}px ${family}`
+
+    // Resolve initial cap font CSS
+    const icFont = availableInitialFonts?.find(f => f.name === newLayout.initialCapFont)
+    const icFamily = icFont?.fontFamily || 'serif'
+    const icSize = newLayout.initialCapSize || 96
+    const initialCapFontCSS = newLayout.initialCap ? `${icSize}px ${icFamily}` : undefined
+
+    onLayoutChange({ ...newLayout, bodyFontCSS, initialCapFontCSS })
+  }, [onLayoutChange, availableFonts, availableInitialFonts])
+
   // Resolve font from active breakpoint's fontFamily + fontSize → availableFonts → config → defaults
   // (activeFontFamily/activeFontSize are defined below, but we need cfg first — use layoutData directly here,
   // then override per-breakpoint in the LayoutView via its own resolution)
@@ -141,21 +160,21 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
   // Update images for the active breakpoint
   const updateActiveImages = (newImages: LayoutImage[], extraLayout?: Partial<LayoutData>) => {
     if (editingBreakpoint === -1) {
-      onLayoutChange({ ...layoutData, images: newImages, ...extraLayout })
+      emitLayoutChange({ ...layoutData, images: newImages, ...extraLayout })
     } else {
       const newBps = [...(layoutData.breakpoints || [])]
       newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], images: newImages }
-      onLayoutChange({ ...layoutData, breakpoints: newBps })
+      emitLayoutChange({ ...layoutData, breakpoints: newBps })
     }
   }
 
   const updateActiveColumns = (n: number) => {
     if (editingBreakpoint === -1) {
-      onLayoutChange({ ...layoutData, columns: n })
+      emitLayoutChange({ ...layoutData, columns: n })
     } else {
       const newBps = [...(layoutData.breakpoints || [])]
       newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], columns: n }
-      onLayoutChange({ ...layoutData, breakpoints: newBps })
+      emitLayoutChange({ ...layoutData, breakpoints: newBps })
     }
   }
 
@@ -166,14 +185,14 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
       const bp = editingBreakpoint === -1 ? null : layoutData.breakpoints?.[editingBreakpoint]
       const imgs = bp?.images || layoutData.images
       if (editingBreakpoint === -1) {
-        onLayoutChange({ ...layoutData, images: [...imgs, image] })
+        emitLayoutChange({ ...layoutData, images: [...imgs, image] })
       } else {
         const newBps = [...(layoutData.breakpoints || [])]
         newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], images: [...imgs, image] }
-        onLayoutChange({ ...layoutData, breakpoints: newBps })
+        emitLayoutChange({ ...layoutData, breakpoints: newBps })
       }
     },
-  }), [layoutData, editingBreakpoint, onLayoutChange])
+  }), [layoutData, editingBreakpoint, emitLayoutChange])
 
   // Add a new breakpoint (clones current default)
   const addBreakpoint = (maxWidth: number, name: string) => {
@@ -192,13 +211,13 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
       initialCapOffsetY: activeInitialCapOffsetY,
     }
     const newBps = [...(layoutData.breakpoints || []), newBp]
-    onLayoutChange({ ...layoutData, breakpoints: newBps })
+    emitLayoutChange({ ...layoutData, breakpoints: newBps })
     setEditingBreakpoint(newBps.length - 1)
   }
 
   const removeBreakpoint = (idx: number) => {
     const newBps = (layoutData.breakpoints || []).filter((_, i) => i !== idx)
-    onLayoutChange({ ...layoutData, breakpoints: newBps })
+    emitLayoutChange({ ...layoutData, breakpoints: newBps })
     if (editingBreakpoint === idx) setEditingBreakpoint(-1)
     else if (editingBreakpoint > idx) setEditingBreakpoint(editingBreakpoint - 1)
   }
@@ -449,7 +468,7 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
       newImages[pd.imageIndex] = { ...newImages[pd.imageIndex], polygon: poly }
       updateActiveImages(newImages)
     }
-  }, [layoutData, onLayoutChange, activeImages, editingBreakpoint])
+  }, [layoutData, emitLayoutChange, activeImages, editingBreakpoint])
 
   const handleMouseUp = useCallback(() => {
     if (dragRef.current) dragRef.current = null
@@ -488,7 +507,7 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
     } else {
       setSelectedImageIndex(null)
     }
-  }, [drawingPolygonIndex, layoutData, onLayoutChange])
+  }, [drawingPolygonIndex, layoutData, emitLayoutChange])
 
   // Image actions
   const handleRemoveImage = (index: number) => {
@@ -566,11 +585,11 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
               onChange={(e) => {
                 const val = e.target.value || undefined
                 if (editingBreakpoint === -1) {
-                  onLayoutChange({ ...layoutData, fontFamily: val })
+                  emitLayoutChange({ ...layoutData, fontFamily: val })
                 } else {
                   const newBps = [...(layoutData.breakpoints || [])]
                   newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], fontFamily: val }
-                  onLayoutChange({ ...layoutData, breakpoints: newBps })
+                  emitLayoutChange({ ...layoutData, breakpoints: newBps })
                 }
               }}
               style={{
@@ -592,11 +611,11 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
             onChange={(e) => {
               const val = parseInt(e.target.value)
               if (editingBreakpoint === -1) {
-                onLayoutChange({ ...layoutData, fontSize: val })
+                emitLayoutChange({ ...layoutData, fontSize: val })
               } else {
                 const newBps = [...(layoutData.breakpoints || [])]
                 newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], fontSize: val }
-                onLayoutChange({ ...layoutData, breakpoints: newBps })
+                emitLayoutChange({ ...layoutData, breakpoints: newBps })
               }
             }}
             style={{
@@ -617,11 +636,11 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
               onClick={() => {
                 const val = !activeInitialCap
                 if (editingBreakpoint === -1) {
-                  onLayoutChange({ ...layoutData, initialCap: val })
+                  emitLayoutChange({ ...layoutData, initialCap: val })
                 } else {
                   const newBps = [...(layoutData.breakpoints || [])]
                   newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCap: val }
-                  onLayoutChange({ ...layoutData, breakpoints: newBps })
+                  emitLayoutChange({ ...layoutData, breakpoints: newBps })
                 }
               }}
               style={{
@@ -640,11 +659,11 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
                 onChange={(e) => {
                   const val = e.target.value || undefined
                   if (editingBreakpoint === -1) {
-                    onLayoutChange({ ...layoutData, initialCapFont: val })
+                    emitLayoutChange({ ...layoutData, initialCapFont: val })
                   } else {
                     const newBps = [...(layoutData.breakpoints || [])]
                     newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCapFont: val }
-                    onLayoutChange({ ...layoutData, breakpoints: newBps })
+                    emitLayoutChange({ ...layoutData, breakpoints: newBps })
                   }
                 }}
                 style={{
@@ -666,11 +685,11 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
                 onChange={(e) => {
                   const val = parseInt(e.target.value)
                   if (editingBreakpoint === -1) {
-                    onLayoutChange({ ...layoutData, initialCapSize: val })
+                    emitLayoutChange({ ...layoutData, initialCapSize: val })
                   } else {
                     const newBps = [...(layoutData.breakpoints || [])]
                     newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCapSize: val }
-                    onLayoutChange({ ...layoutData, breakpoints: newBps })
+                    emitLayoutChange({ ...layoutData, breakpoints: newBps })
                   }
                 }}
                 style={{
@@ -693,11 +712,11 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
                   onChange={(e) => {
                     const val = parseInt(e.target.value) || 0
                     if (editingBreakpoint === -1) {
-                      onLayoutChange({ ...layoutData, initialCapOffsetX: val })
+                      emitLayoutChange({ ...layoutData, initialCapOffsetX: val })
                     } else {
                       const newBps = [...(layoutData.breakpoints || [])]
                       newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCapOffsetX: val }
-                      onLayoutChange({ ...layoutData, breakpoints: newBps })
+                      emitLayoutChange({ ...layoutData, breakpoints: newBps })
                     }
                   }}
                   style={{ width: 44, padding: '2px 4px', fontSize: 11, border: '1px solid #d4c5e8', borderRadius: 3, color: '#6a4c93', background: 'transparent', outline: 'none', textAlign: 'center' }}
@@ -707,11 +726,11 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
                   onChange={(e) => {
                     const val = parseInt(e.target.value) || 0
                     if (editingBreakpoint === -1) {
-                      onLayoutChange({ ...layoutData, initialCapOffsetY: val })
+                      emitLayoutChange({ ...layoutData, initialCapOffsetY: val })
                     } else {
                       const newBps = [...(layoutData.breakpoints || [])]
                       newBps[editingBreakpoint] = { ...newBps[editingBreakpoint], initialCapOffsetY: val }
-                      onLayoutChange({ ...layoutData, breakpoints: newBps })
+                      emitLayoutChange({ ...layoutData, breakpoints: newBps })
                     }
                   }}
                   style={{ width: 44, padding: '2px 4px', fontSize: 11, border: '1px solid #d4c5e8', borderRadius: 3, color: '#6a4c93', background: 'transparent', outline: 'none', textAlign: 'center' }}
