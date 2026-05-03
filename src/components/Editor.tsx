@@ -422,13 +422,12 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
   // Called from LayoutView when an image is mousedowned
   const handleImageMouseDown = useCallback((e: React.MouseEvent, index: number) => {
     if (drawingPolygonIndex !== null) return // ignore in polygon mode
-    const imgEl = e.currentTarget as HTMLImageElement
     dragRef.current = {
       imageIndex: index,
       startX: e.clientX,
       startY: e.clientY,
       origX: activeImages[index].x,
-      origImgY: parseFloat(imgEl.style.top) || activeImages[index].y,
+      origImgY: activeImages[index].y,
       active: false,
     }
     setSelectedImageIndex(index)
@@ -444,17 +443,23 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
   }, [activeImages])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const layoutWidth = layoutViewRef.current?.offsetWidth || 700
+    const currentEditorWidth = (editingBreakpoint === -1
+      ? layoutData.editorWidth
+      : layoutData.breakpoints?.[editingBreakpoint]?.editorWidth) || layoutWidth
+    const scale = layoutWidth / currentEditorWidth
+    const imgScale = scale < 1 ? Math.sqrt(scale) : scale
+
     if (dragRef.current) {
       const drag = dragRef.current
-      const layoutWidth = layoutViewRef.current?.offsetWidth || 700
-      const dx = e.clientX - drag.startX
-      const dy = e.clientY - drag.startY
+      const dxPx = e.clientX - drag.startX
+      const dyPx = e.clientY - drag.startY
 
-      if (!drag.active && Math.abs(dx) + Math.abs(dy) < 3) return
+      if (!drag.active && Math.abs(dxPx) + Math.abs(dyPx) < 3) return
       drag.active = true
 
-      const newX = drag.origX + dx
-      const newY = Math.max(0, drag.origImgY + dy)
+      const newX = drag.origX + dxPx / scale
+      const newY = Math.max(0, drag.origImgY + dyPx / scale)
 
       const newImages = [...activeImages]
       newImages[drag.imageIndex] = {
@@ -462,16 +467,15 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
         x: newX,
         y: newY,
       }
-      updateActiveImages(newImages, { editorWidth: layoutWidth })
+      updateActiveImages(newImages)
     }
 
     if (resizeRef.current) {
       const r = resizeRef.current
-      const dx = e.clientX - r.startX
-      const layoutWidth = layoutViewRef.current?.offsetWidth || 700
+      const dxPx = e.clientX - r.startX
       const newImages = [...activeImages]
-      newImages[r.imageIndex] = { ...newImages[r.imageIndex], width: Math.max(50, r.origWidth + dx) }
-      updateActiveImages(newImages, { editorWidth: layoutWidth })
+      newImages[r.imageIndex] = { ...newImages[r.imageIndex], width: Math.max(50, r.origWidth + dxPx / imgScale) }
+      updateActiveImages(newImages)
     }
 
     if (polyDragRef.current) {
