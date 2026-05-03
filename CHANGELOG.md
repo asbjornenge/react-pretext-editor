@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6
+
+- **Fix: image drag/resize no longer rescales the layout** — when dragging or resizing an image, mouse delta is now converted from screen pixel-space to `editorWidth` coordinate-space. Previously each drag overwrote `editorWidth` with the current container width, which made all other (non-dragged) images appear to shrink on the first interaction.
+- **Demo**: live demo at <https://pretext-editor.asbjornenge.com>. Build via `npm run demo:build`; container build via `Dockerfile.demo`.
+
 ## 0.1.5
 
 - **Selectable text in renderer mode** — text spans are now click/select-pass-through only in editor mode; the `Renderer` component allows native text selection
