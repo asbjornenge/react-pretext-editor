@@ -21,6 +21,9 @@ export function resolveBreakpoint(layout: LayoutData, containerWidth: number) {
           initialCapSize: bp.initialCapSize ?? layout.initialCapSize,
           initialCapOffsetX: bp.initialCapOffsetX ?? layout.initialCapOffsetX,
           initialCapOffsetY: bp.initialCapOffsetY ?? layout.initialCapOffsetY,
+          bodyFontCSS: bp.bodyFontCSS ?? layout.bodyFontCSS,
+          bodyLineHeight: bp.bodyLineHeight ?? layout.bodyLineHeight,
+          headingLineHeight: bp.headingLineHeight ?? layout.headingLineHeight,
           breakpointIndex: idx,
         }
       }
@@ -31,6 +34,9 @@ export function resolveBreakpoint(layout: LayoutData, containerWidth: number) {
     fontFamily: layout.fontFamily, fontSize: layout.fontSize,
     initialCap: layout.initialCap, initialCapFont: layout.initialCapFont, initialCapSize: layout.initialCapSize,
     initialCapOffsetX: layout.initialCapOffsetX, initialCapOffsetY: layout.initialCapOffsetY,
+    bodyFontCSS: layout.bodyFontCSS,
+    bodyLineHeight: layout.bodyLineHeight,
+    headingLineHeight: layout.headingLineHeight,
     breakpointIndex: -1,
   }
 }
@@ -96,33 +102,36 @@ export default function LayoutView({
     const scale = containerWidth / editorWidth
     const imgData = prepareImageData(bp.images || [], scale)
 
-    // Resolve font: use availableFonts if provided, else fall back to stored CSS strings
+    // Resolve font: prefer stored bodyFontCSS / lineHeights from layoutData (set by Editor),
+    // fall back to availableFonts lookup, then to defaults
     const bpFontFamily = bp.fontFamily
     const selectedFont = availableFonts?.find(f => f.name === bpFontFamily)
     const DEFAULT_FONT_FAMILY = 'Lato, sans-serif'
 
     let resolvedBodyFont: string
-    if (selectedFont) {
+    if (bp.bodyFontCSS) {
+      resolvedBodyFont = bp.bodyFontCSS.replace(/^\d+px\s*/, '')
+    } else if (selectedFont) {
       resolvedBodyFont = selectedFont.bodyFont.replace(/^\d+px\s*/, '')
-    } else if (layout.bodyFontCSS) {
-      resolvedBodyFont = layout.bodyFontCSS.replace(/^\d+px\s*/, '')
     } else {
       resolvedBodyFont = DEFAULT_FONT_FAMILY
     }
 
     const baseSize = bp.fontSize || 16
+    // Prefer stored line heights (exact reproduction), fall back to FontOption values, then computed
+    const resolvedBodyLH = bp.bodyLineHeight ?? selectedFont?.bodyLineHeight ?? Math.round(baseSize * 1.6)
+    const resolvedHeadingLH = bp.headingLineHeight ?? selectedFont?.headingLineHeight ?? Math.round(baseSize * 1.5 * 1.4)
+
     const fontOverrides: Partial<LayoutConfig> = {
       bodyFont: `${baseSize}px ${resolvedBodyFont}`,
       headingFont: `bold ${baseSize}px ${resolvedBodyFont}`,
       h1Font: `bold ${Math.round(baseSize * 2)}px ${resolvedBodyFont}`,
       h2Font: `bold ${Math.round(baseSize * 1.5)}px ${resolvedBodyFont}`,
       h3Font: `bold ${Math.round(baseSize * 1.25)}px ${resolvedBodyFont}`,
-      bodyLineHeight: Math.round(baseSize * 1.6),
+      bodyLineHeight: resolvedBodyLH,
       h1LineHeight: Math.round(baseSize * 2 * 1.3),
-      h2LineHeight: Math.round(baseSize * 1.5 * 1.4),
+      h2LineHeight: resolvedHeadingLH,
       h3LineHeight: Math.round(baseSize * 1.25 * 1.4),
-      ...(selectedFont?.bodyLineHeight ? { bodyLineHeight: selectedFont.bodyLineHeight } : {}),
-      ...(selectedFont?.headingLineHeight ? { headingLineHeight: selectedFont.headingLineHeight } : {}),
     }
     // Resolve initial cap font: use availableInitialFonts if provided, else stored CSS
     const initialCapEnabled = bp.initialCap || false
@@ -261,7 +270,7 @@ export default function LayoutView({
                     left: el.x,
                     top: el.y,
                     lineHeight: 1,
-                    pointerEvents: 'none',
+                    pointerEvents: isEditor ? 'none' : undefined,
                   }}
                 >
                   {el.char}
@@ -279,7 +288,7 @@ export default function LayoutView({
                     left: el.x,
                     top: el.y,
                     color: '#333',
-                    pointerEvents: 'none',
+                    pointerEvents: isEditor ? 'none' : undefined,
                   }}
                 >
                   {renderTextWithSegments(el.text || '', el.segments, el.charOffset || 0)}
@@ -296,7 +305,7 @@ export default function LayoutView({
                     left: el.x,
                     top: el.y,
                     color: '#502581',
-                    pointerEvents: 'none',
+                    pointerEvents: isEditor ? 'none' : undefined,
                     fontWeight: 600,
                   }}
                 >
@@ -317,7 +326,7 @@ export default function LayoutView({
                     background: '#502581',
                     borderRadius: 2,
                     opacity: 0.4,
-                    pointerEvents: 'none',
+                    pointerEvents: isEditor ? 'none' : undefined,
                   }}
                 />
               )
@@ -335,7 +344,7 @@ export default function LayoutView({
                     background: '#f5f2f0',
                     border: '1px solid #e0d8d0',
                     borderRadius: 4,
-                    pointerEvents: 'none',
+                    pointerEvents: isEditor ? 'none' : undefined,
                   }}
                 />
               )
@@ -351,7 +360,7 @@ export default function LayoutView({
                     width: el.width,
                     height: 1,
                     background: '#ccc',
-                    pointerEvents: 'none',
+                    pointerEvents: isEditor ? 'none' : undefined,
                   }}
                 />
               )

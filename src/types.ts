@@ -28,6 +28,10 @@ export interface LayoutBreakpoint {
   initialCapSize?: number
   initialCapOffsetX?: number
   initialCapOffsetY?: number
+  // Resolved values (set by Editor, used by Renderer for exact reproduction)
+  bodyFontCSS?: string
+  bodyLineHeight?: number
+  headingLineHeight?: number
 }
 
 export interface LayoutData {
@@ -41,9 +45,11 @@ export interface LayoutData {
   initialCapSize?: number
   initialCapOffsetX?: number
   initialCapOffsetY?: number
-  // Resolved CSS font strings (set by Editor, used by Renderer when availableFonts not provided)
+  // Resolved values (set by Editor, used by Renderer for exact reproduction)
   bodyFontCSS?: string
   initialCapFontCSS?: string
+  bodyLineHeight?: number
+  headingLineHeight?: number
   breakpoints?: LayoutBreakpoint[]
 }
 

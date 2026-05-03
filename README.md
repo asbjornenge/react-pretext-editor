@@ -69,6 +69,29 @@ function BlogPost({ blocks, layout }) {
 }
 ```
 
+The Editor stores resolved font CSS (`bodyFontCSS`, `bodyLineHeight`, `headingLineHeight`, `initialCapFontCSS`) into `layoutData` whenever it changes — both on the top-level layout and on each breakpoint. This means a Renderer in another app can reproduce a saved layout exactly **without** needing the same `availableFonts` lookup; the `availableFonts` prop is only required if you want to override the stored values.
+
+### Programmatic image insertion
+
+```tsx
+import { Editor } from 'react-pretext-editor'
+import type { EditorRef } from 'react-pretext-editor'
+
+const editorRef = useRef<EditorRef>(null)
+
+editorRef.current?.addImage({
+  filename: 'photo.jpg',
+  alt: 'A photo',
+  url: 'https://...',
+  aspectRatio: 0.66,
+  x: 50, y: 50, width: 200,
+})
+
+return <Editor ref={editorRef} {...props} />
+```
+
+The image is added to the currently-active breakpoint (or the default layout if no breakpoint is being edited).
+
 ## Editor Props
 
 | Prop | Type | Description |
@@ -84,6 +107,8 @@ function BlogPost({ blocks, layout }) {
 | `width` | `number \| string` | Editor width |
 | `height` | `number \| string` | Minimum editor height |
 | `expandable` | `boolean` | Expand width when multiple panels are active |
+
+`config` accepts a `defaultMode` of `'write'` or `'layout'` to control which mode the editor opens in.
 
 ## Data Model
 

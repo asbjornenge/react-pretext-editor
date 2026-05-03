@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.5
+
+- **Selectable text in renderer mode** — text spans are now click/select-pass-through only in editor mode; the `Renderer` component allows native text selection
+- **Per-breakpoint font state stored in `layoutData`** — `bodyFontCSS`, `bodyLineHeight`, and `headingLineHeight` are resolved by the Editor and stored on both top-level layout and each breakpoint, so renderers can reproduce layouts exactly without needing to know about the original `availableFonts`
+
+## 0.1.4
+
+- **Portable layout rendering** — `bodyFontCSS` and `initialCapFontCSS` are written into `layoutData` on change so a downstream `Renderer` can reproduce the editor's layout without needing access to the same `availableFonts` lookup
+
+## 0.1.3
+
+- **Fix**: `addImage` (via `EditorRef`) read stale state from a closure; now reads current `layoutData` and `editingBreakpoint` directly
+
+## 0.1.2
+
+- **`EditorRef` with `addImage(image)` method** — programmatically add an image to the active breakpoint via `useRef`
+
+## 0.1.1
+
+- **`defaultMode` config option** — open the editor in `'write'` or `'layout'` mode
+
 ## 0.1.0 (2026-04-13)
 
 Initial release.

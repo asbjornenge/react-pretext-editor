@@ -103,24 +103,44 @@ export default forwardRef<EditorRef, EditorProps>(function Editor({
 
   const layoutData: LayoutData = layout || { images: [] }
 
-  // Wrap onLayoutChange to inject resolved CSS font strings
-  const emitLayoutChange = useCallback((newLayout: LayoutData) => {
-    // Resolve body font CSS
-    const font = availableFonts?.find(f => f.name === newLayout.fontFamily)
+  // Resolve all font/lineHeight values for a given fontFamily/fontSize/initialCap state
+  const resolveFontState = useCallback((fontFamily?: string, fontSize?: number, initialCap?: boolean, initialCapFont?: string, initialCapSize?: number) => {
+    const font = availableFonts?.find(f => f.name === fontFamily)
     const family = font
       ? font.bodyFont.replace(/^\d+px\s*/, '')
       : DEFAULT_CONFIG.bodyFont.replace(/^\d+px\s*/, '')
-    const size = newLayout.fontSize || 16
+    const size = fontSize || 16
     const bodyFontCSS = `${size}px ${family}`
+    const bodyLineHeight = font?.bodyLineHeight ?? Math.round(size * 1.6)
+    const headingLineHeight = font?.headingLineHeight ?? Math.round(size * 1.5 * 1.4)
 
-    // Resolve initial cap font CSS
-    const icFont = availableInitialFonts?.find(f => f.name === newLayout.initialCapFont)
+    const icFont = availableInitialFonts?.find(f => f.name === initialCapFont)
     const icFamily = icFont?.fontFamily || 'serif'
-    const icSize = newLayout.initialCapSize || 96
-    const initialCapFontCSS = newLayout.initialCap ? `${icSize}px ${icFamily}` : undefined
+    const icSize = initialCapSize || 96
+    const initialCapFontCSS = initialCap ? `${icSize}px ${icFamily}` : undefined
 
-    onLayoutChange({ ...newLayout, bodyFontCSS, initialCapFontCSS })
-  }, [onLayoutChange, availableFonts, availableInitialFonts])
+    return { bodyFontCSS, bodyLineHeight, headingLineHeight, initialCapFontCSS }
+  }, [availableFonts, availableInitialFonts])
+
+  // Wrap onLayoutChange to inject resolved CSS font strings + line heights
+  const emitLayoutChange = useCallback((newLayout: LayoutData) => {
+    // Resolve for default
+    const top = resolveFontState(newLayout.fontFamily, newLayout.fontSize, newLayout.initialCap, newLayout.initialCapFont, newLayout.initialCapSize)
+
+    // Resolve per breakpoint (each breakpoint may have its own font/size)
+    const breakpoints = newLayout.breakpoints?.map(bp => {
+      const resolved = resolveFontState(
+        bp.fontFamily ?? newLayout.fontFamily,
+        bp.fontSize ?? newLayout.fontSize,
+        bp.initialCap ?? newLayout.initialCap,
+        bp.initialCapFont ?? newLayout.initialCapFont,
+        bp.initialCapSize ?? newLayout.initialCapSize,
+      )
+      return { ...bp, ...resolved }
+    })
+
+    onLayoutChange({ ...newLayout, ...top, breakpoints })
+  }, [onLayoutChange, resolveFontState])
 
   // Resolve font from active breakpoint's fontFamily + fontSize → availableFonts → config → defaults
   // (activeFontFamily/activeFontSize are defined below, but we need cfg first — use layoutData directly here,
