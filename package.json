@@ -17,7 +17,8 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc --declaration --emitDeclarationOnly --outDir dist && vite build",
-    "dev": "cd test-app && vite"
+    "dev": "cd test-app && vite",
+    "demo:build": "cd test-app && vite build"
   },
   "peerDependencies": {
     "react": "^18 || ^19",
