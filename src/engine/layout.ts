@@ -118,7 +118,7 @@ export function getSlots(
     cur = Math.max(cur, b.right)
   }
   if (cur < containerWidth) slots.push({ left: cur, right: containerWidth })
-  return slots.filter(s => (s.right - s.left) > 30)
+  return slots.filter(s => (s.right - s.left) > 80)
 }
 
 export function prepareImageData(images: LayoutImage[], scale: number): ImageData[] {
@@ -255,7 +255,7 @@ export function layoutBlocks(
         if (slots.length === 0) { y += lineHeight; continue }
         const usableSlots = slots.filter(slot => {
           const w = Math.min(slot.right, columnWidth) - Math.max(slot.left, currentIndent)
-          return w >= 30
+          return w >= 80
         })
         if (usableSlots.length === 0) { y += lineHeight; continue }
         let renderedOnLine = false

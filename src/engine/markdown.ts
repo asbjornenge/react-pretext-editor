@@ -1,13 +1,20 @@
 import { marked } from 'marked'
 import type { Block, TextSegment } from '../types'
 
+// Normalize whitespace in inline text: collapse soft line breaks and runs of
+// whitespace into a single space. Hard breaks (markdown `<br>`) are emitted as
+// a separate segment with text '\n' and are not affected here.
+function normalizeInlineText(text: string): string {
+  return text.replace(/\s+/g, ' ')
+}
+
 // Convert marked inline tokens to TextSegments
 function inlineTokensToSegments(tokens: any[], inherited: Partial<TextSegment> = {}): TextSegment[] {
   const segments: TextSegment[] = []
   for (const token of tokens) {
     switch (token.type) {
       case 'text':
-        segments.push({ text: token.text, ...inherited })
+        segments.push({ text: normalizeInlineText(token.text), ...inherited })
         break
       case 'strong':
         segments.push(...inlineTokensToSegments((token as any).tokens || [], { ...inherited, bold: true }))
@@ -16,7 +23,7 @@ function inlineTokensToSegments(tokens: any[], inherited: Partial<TextSegment> =
         segments.push(...inlineTokensToSegments((token as any).tokens || [], { ...inherited, italic: true }))
         break
       case 'codespan':
-        segments.push({ text: (token as any).text, ...inherited, code: true })
+        segments.push({ text: normalizeInlineText((token as any).text), ...inherited, code: true })
         break
       case 'link':
         segments.push(...inlineTokensToSegments((token as any).tokens || [], { ...inherited, link: (token as any).href }))
@@ -28,12 +35,12 @@ function inlineTokensToSegments(tokens: any[], inherited: Partial<TextSegment> =
         segments.push({ text: '\n', ...inherited })
         break
       case 'escape':
-        segments.push({ text: (token as any).text, ...inherited })
+        segments.push({ text: normalizeInlineText((token as any).text), ...inherited })
         break
       default:
         // Fallback: use raw text if available
         if ('text' in token) {
-          segments.push({ text: (token as any).text, ...inherited })
+          segments.push({ text: normalizeInlineText((token as any).text), ...inherited })
         }
     }
   }
