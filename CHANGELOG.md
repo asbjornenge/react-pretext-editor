@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7
+
+- **Fix: soft line breaks no longer break the rendered layout** — markdown source with line-wrapped paragraphs (`\n` inside a paragraph) was passing literal newline characters into text segments. Combined with the renderer's `white-space: pre` style, those newlines became hard breaks and produced overlapping text. Inline text segments are now whitespace-normalized to single spaces (hard `<br>` breaks are unaffected).
+- **Fix: narrow slots next to image edges no longer produce mid-word fragments** — when an image sits close to a column edge, the residual slot on the far side could be only a few pixels wide. The engine would happily fit 3–4 characters there ("gene", "rell", …), splitting words across columns. The minimum-slot-width threshold was raised from 30 px to 80 px so unreadable slivers are dropped from layout.
+- **Tests**: added `vitest` with unit coverage for `getSlots`, `getBlockedInterval`, `parseMarkdown`, and `blocksToMarkdown`, including regression tests for both fixes above. Run with `npm test`.
+
 ## 0.1.6
 
 - **Fix: image drag/resize no longer rescales the layout** — when dragging or resizing an image, mouse delta is now converted from screen pixel-space to `editorWidth` coordinate-space. Previously each drag overwrote `editorWidth` with the current container width, which made all other (non-dragged) images appear to shrink on the first interaction.
