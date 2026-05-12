@@ -221,7 +221,19 @@ export default function LayoutView({
         if (seg.link) { style.color = '#502581'; style.textDecoration = 'underline' }
         if (seg.strikethrough) style.textDecoration = 'line-through'
 
-        if (Object.keys(style).length > 0) {
+        if (seg.link && !isEditor) {
+          parts.push(
+            <a
+              key={partKey++}
+              href={seg.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={style}
+            >
+              {text}
+            </a>
+          )
+        } else if (Object.keys(style).length > 0) {
           parts.push(<span key={partKey++} style={style}>{text}</span>)
         } else {
           parts.push(<React.Fragment key={partKey++}>{text}</React.Fragment>)
