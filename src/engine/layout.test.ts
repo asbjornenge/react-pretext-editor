@@ -31,6 +31,24 @@ describe('getBlockedInterval', () => {
   })
 })
 
+describe('getBlockedInterval with lineHeight', () => {
+  it('blocks a line whose bottom dips into the image even if its top is above', () => {
+    // Image at y=100, height=100. Line at currentY=85 with lineHeight=26 has
+    // bottom at y=111 — overlaps the image. Without lineHeight check this
+    // would be unblocked and text would render under the image top.
+    const data = prepareImageData([img({ x: 100, y: 100, width: 100, aspectRatio: 1 })], 1)
+    expect(getBlockedInterval(data[0], 85, 10, undefined, 26)).not.toBeNull()
+    // The old behaviour (no lineHeight) leaves it null
+    expect(getBlockedInterval(data[0], 85, 10)).toBeNull()
+  })
+
+  it('still leaves the line above an image unblocked when there is real clearance', () => {
+    // Image at y=100. Line at currentY=70 with lineHeight=26 has bottom 96 — clear.
+    const data = prepareImageData([img({ x: 100, y: 100, width: 100 })], 1)
+    expect(getBlockedInterval(data[0], 70, 10, undefined, 26)).toBeNull()
+  })
+})
+
 describe('getSlots', () => {
   it('returns full container when no images block at y', () => {
     const data = prepareImageData([img({ x: 100, y: 500, width: 100 })], 1)

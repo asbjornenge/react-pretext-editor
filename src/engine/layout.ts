@@ -64,32 +64,52 @@ export function getBlockedInterval(
   currentY: number,
   imgPadding: number,
   imgX?: number,  // Override x (for column-local rendering)
+  lineHeight: number = 0,  // If > 0, block when line range [currentY, currentY+lineHeight] overlaps image
 ): { left: number; right: number } | null {
   const imgH = img.width * (img.aspectRatio || 1.2)
-  if (currentY < img.y || currentY >= img.y + imgH + imgPadding) return null
+  const imgTop = img.y
+  const imgBot = img.y + imgH + imgPadding
+  // Block if the line range overlaps the image range. With lineHeight=0 this
+  // reduces to a single-point check; with lineHeight>0 a line whose top sits
+  // just above the image but whose bottom dips into it is also blocked, so
+  // the last line above an image can't slip in under image pixels.
+  if (lineHeight > 0) {
+    if (currentY + lineHeight <= imgTop || currentY >= imgBot) return null
+  } else {
+    if (currentY < imgTop || currentY >= imgBot) return null
+  }
 
   const x = imgX !== undefined ? imgX : img.x
   const rectFallback = { left: x - imgPadding, right: x + img.width + imgPadding }
 
   if (img.polygon && img.polygon.length >= 3) {
-    const relY = (currentY - img.y) / imgH
-    if (relY < 0 || relY > 1) return rectFallback
-
+    // For polygon-aware wrap, sample the polygon across the line's full vertical
+    // range and take the widest blocked interval. This prevents the polygon's
+    // narrow ends from leaking image pixels into the line above/below.
+    const samplePoints = lineHeight > 0
+      ? [currentY, currentY + lineHeight * 0.5, currentY + lineHeight - 1]
+      : [currentY]
     let minX = Infinity
     let maxX = -Infinity
+    let anyInside = false
     const poly = img.polygon
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i]
-      const b = poly[(i + 1) % poly.length]
-      if ((a.y <= relY && b.y > relY) || (b.y <= relY && a.y > relY)) {
-        const t = (relY - a.y) / (b.y - a.y)
-        const ix = a.x + t * (b.x - a.x)
-        const absX = x + ix * img.width
-        minX = Math.min(minX, absX)
-        maxX = Math.max(maxX, absX)
+    for (const yp of samplePoints) {
+      const relY = (yp - img.y) / imgH
+      if (relY < 0 || relY > 1) continue
+      anyInside = true
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i]
+        const b = poly[(i + 1) % poly.length]
+        if ((a.y <= relY && b.y > relY) || (b.y <= relY && a.y > relY)) {
+          const t = (relY - a.y) / (b.y - a.y)
+          const ix = a.x + t * (b.x - a.x)
+          const absX = x + ix * img.width
+          minX = Math.min(minX, absX)
+          maxX = Math.max(maxX, absX)
+        }
       }
     }
-    if (minX === Infinity) return rectFallback
+    if (!anyInside || minX === Infinity) return rectFallback
     // Less padding on the left (text ragged-right edge makes it look gapier)
     return { left: minX - imgPadding * 0.4, right: maxX + imgPadding }
   }
@@ -103,10 +123,11 @@ export function getSlots(
   containerWidth: number,
   imgPadding: number,
   imgXOverrides?: number[],
+  lineHeight: number = 0,
 ): { left: number; right: number }[] {
   const blocked: { left: number; right: number }[] = []
   for (let i = 0; i < imgData.length; i++) {
-    const interval = getBlockedInterval(imgData[i], currentY, imgPadding, imgXOverrides?.[i])
+    const interval = getBlockedInterval(imgData[i], currentY, imgPadding, imgXOverrides?.[i], lineHeight)
     if (interval) blocked.push(interval)
   }
   if (blocked.length === 0) return [{ left: 0, right: containerWidth }]
@@ -251,7 +272,7 @@ export function layoutBlocks(
           return { y, cursor, done: false, overflow: true, charOffset }
         }
         const currentIndent = y < indentUntilY ? indent : 0
-        const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding)
+        const slots = getSlots(colImgs, y, columnWidth, cfg.imgPadding, undefined, lineHeight)
         if (slots.length === 0) { y += lineHeight; continue }
         const usableSlots = slots.filter(slot => {
           const w = Math.min(slot.right, columnWidth) - Math.max(slot.left, currentIndent)
