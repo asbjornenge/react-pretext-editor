@@ -109,7 +109,12 @@ export function getBlockedInterval(
         }
       }
     }
-    if (!anyInside || minX === Infinity) return rectFallback
+    // No sample inside the image bbox: we're in the padding zone below the
+    // image, where rect-fallback still gives the right breathing room.
+    if (!anyInside) return rectFallback
+    // Polygon doesn't cover this y range: the polygon explicitly clips the
+    // image away here, so text is free to flow through.
+    if (minX === Infinity) return null
     // Less padding on the left (text ragged-right edge makes it look gapier)
     return { left: minX - imgPadding * 0.4, right: maxX + imgPadding }
   }
